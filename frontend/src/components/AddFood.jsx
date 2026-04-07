@@ -13,6 +13,7 @@ export default function AddFood() {
     unit: 'serving'
   })
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState('')
   const [loading, setLoading] = useState(false)
 
   const handleChange = (e) => {
@@ -23,12 +24,16 @@ export default function AddFood() {
     e.preventDefault()
     
     if (!formData.name.trim()) {
+      setMessageType('error')
       setMessage('❌ Please enter food name')
+      setTimeout(() => setMessage(''), 3000)
       return
     }
     
     if (!formData.cost) {
+      setMessageType('error')
       setMessage('❌ Please enter cost')
+      setTimeout(() => setMessage(''), 3000)
       return
     }
     
@@ -53,7 +58,8 @@ export default function AddFood() {
       const data = await response.json()
       
       if (data.success) {
-        setMessage(`✅ Added "${formData.name}" to your foods!`)
+        setMessageType('success')
+        setMessage(`✅ "${formData.name}" added to your foods!`)
         setFormData({
           name: '',
           protein: '',
@@ -66,11 +72,15 @@ export default function AddFood() {
         })
         setTimeout(() => setMessage(''), 3000)
       } else {
+        setMessageType('error')
         setMessage(`❌ ${data.detail || 'Failed to add food'}`)
+        setTimeout(() => setMessage(''), 3000)
       }
     } catch (error) {
       console.error('Error:', error)
+      setMessageType('error')
       setMessage('❌ Error connecting to server')
+      setTimeout(() => setMessage(''), 3000)
     }
     
     setLoading(false)
@@ -82,113 +92,125 @@ export default function AddFood() {
       <p className="info-text">Add your own foods with their nutrition values. They will appear in your food list for logging.</p>
       
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>Food Name *</label>
-          <input 
-            type="text" 
-            name="name" 
-            value={formData.name}
-            onChange={handleChange}
-            placeholder="e.g., Homemade Chicken Curry, Protein Shake"
-            required
-          />
-        </div>
-
-        <div className="form-row">
+        <div className="form-section">
+          <h3>📝 Food Details</h3>
+          
           <div className="form-group">
-            <label>Protein (g)</label>
+            <label>Food Name *</label>
             <input 
-              type="number" 
-              name="protein" 
-              value={formData.protein}
+              type="text" 
+              name="name" 
+              value={formData.name}
               onChange={handleChange}
-              step="0.1"
-              placeholder="e.g., 25"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Carbs (g)</label>
-            <input 
-              type="number" 
-              name="carbs" 
-              value={formData.carbs}
-              onChange={handleChange}
-              step="0.1"
-              placeholder="e.g., 30"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Cholesterol (mg)</label>
-            <input 
-              type="number" 
-              name="cholesterol" 
-              value={formData.cholesterol}
-              onChange={handleChange}
-              step="1"
-              placeholder="e.g., 80"
-            />
-          </div>
-        </div>
-
-        <div className="form-row">
-          <div className="form-group">
-            <label>Iron (mg)</label>
-            <input 
-              type="number" 
-              name="iron" 
-              value={formData.iron}
-              onChange={handleChange}
-              step="0.1"
-              placeholder="e.g., 2.5"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Calories</label>
-            <input 
-              type="number" 
-              name="calories" 
-              value={formData.calories}
-              onChange={handleChange}
-              step="1"
-              placeholder="e.g., 250"
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Cost (₹) *</label>
-            <input 
-              type="number" 
-              name="cost" 
-              value={formData.cost}
-              onChange={handleChange}
-              step="0.01"
-              placeholder="e.g., 150"
+              placeholder="e.g., Homemade Chicken Curry, Protein Shake"
               required
             />
           </div>
+
+          <div className="form-group">
+            <label>Serving Unit</label>
+            <input 
+              type="text" 
+              name="unit" 
+              value={formData.unit}
+              onChange={handleChange}
+              placeholder="e.g., plate, 100g, cup"
+            />
+            <small>How you measure this food</small>
+          </div>
         </div>
 
-        <div className="form-group">
-          <label>Serving Unit</label>
-          <input 
-            type="text" 
-            name="unit" 
-            value={formData.unit}
-            onChange={handleChange}
-            placeholder="e.g., plate, 100g, cup"
-          />
-          <small>How you measure this food (serving, 100g, cup, etc.)</small>
+        <div className="form-section">
+          <h3>🥗 Nutrition Information (per serving)</h3>
+          
+          <div className="form-row">
+            <div className="form-group">
+              <label>🥩 Protein (g)</label>
+              <input 
+                type="number" 
+                name="protein" 
+                value={formData.protein}
+                onChange={handleChange}
+                step="0.1"
+                placeholder="e.g., 25"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>🍞 Carbs (g)</label>
+              <input 
+                type="number" 
+                name="carbs" 
+                value={formData.carbs}
+                onChange={handleChange}
+                step="0.1"
+                placeholder="e.g., 30"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>🍳 Cholesterol (mg)</label>
+              <input 
+                type="number" 
+                name="cholesterol" 
+                value={formData.cholesterol}
+                onChange={handleChange}
+                step="1"
+                placeholder="e.g., 80"
+              />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>🩸 Iron (mg)</label>
+              <input 
+                type="number" 
+                name="iron" 
+                value={formData.iron}
+                onChange={handleChange}
+                step="0.1"
+                placeholder="e.g., 2.5"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>🔥 Calories</label>
+              <input 
+                type="number" 
+                name="calories" 
+                value={formData.calories}
+                onChange={handleChange}
+                step="1"
+                placeholder="e.g., 250"
+              />
+            </div>
+
+            <div className="form-group">
+              <label>💰 Cost (₹) *</label>
+              <input 
+                type="number" 
+                name="cost" 
+                value={formData.cost}
+                onChange={handleChange}
+                step="0.01"
+                placeholder="e.g., 150"
+                required
+              />
+            </div>
+          </div>
         </div>
 
-        <button type="submit" disabled={loading}>
+        <button type="submit" disabled={loading} className="submit-btn">
           {loading ? 'Adding...' : '➕ Add to My Foods'}
         </button>
       </form>
 
-      {message && <div className={`message ${message.includes('✅') ? 'success' : 'error'}`}>{message}</div>}
+      {message && (
+        <div className={`message ${messageType === 'success' ? 'success' : 'error'}`}>
+          {message}
+        </div>
+      )}
       
       <div className="tips">
         <h4>💡 Tips:</h4>
@@ -196,7 +218,7 @@ export default function AddFood() {
           <li>Check nutritional labels on packaged foods</li>
           <li>For homemade food, sum up ingredients and divide by servings</li>
           <li>Once added, you can log this food from the "Log Food" tab</li>
-          <li>You can add as many foods as you want - they're all saved to your personal database</li>
+          <li>You can add as many foods as you want</li>
         </ul>
       </div>
     </div>
