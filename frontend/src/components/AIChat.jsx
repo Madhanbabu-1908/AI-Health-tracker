@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { API_BASE_URL } from '../services/api'
 
-export default function AIChat() {
+export default function AIChat({ profile }) {
   const [query, setQuery] = useState('')
   const [response, setResponse] = useState('')
   const [loading, setLoading] = useState(false)
@@ -14,23 +14,22 @@ export default function AIChat() {
     setConversation(prev => [...prev, { role: 'user', content: query }])
     
     try {
-      const res = await fetch(`${API_BASE_URL}/ai_query`, {
+      const res = await fetch(`${API_BASE_URL}/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: query })
       })
       const data = await res.json()
       
-      const aiResponse = data.ai_response || 'No response from AI'
+      const aiResponse = data.response || 'No response from AI'
       setResponse(aiResponse)
       setConversation(prev => [...prev, { role: 'assistant', content: aiResponse }])
       
-      if (data.web_search && data.web_search.length > 0) {
-        const webInfo = `\n\n🔍 Web Results:\n${data.web_search.map(r => `• ${r.title}`).join('\n')}`
-        setResponse(prev => prev + webInfo)
+      if (data.from_cache) {
+        console.log('Response from cache')
       }
     } catch (error) {
-      const errorMsg = '❌ Error connecting to AI. Please check backend.'
+      const errorMsg = '❌ Error connecting to AI. Please try again.'
       setResponse(errorMsg)
       setConversation(prev => [...prev, { role: 'assistant', content: errorMsg }])
     } finally {
@@ -40,16 +39,22 @@ export default function AIChat() {
   }
 
   const quickQuestions = [
-    "What should I eat for 30g protein?",
-    "Is beef chukka good for recovery?",
-    "How to lower cholesterol naturally?",
-    "Best post-workout meal?",
-    "Suggest a high protein breakfast"
+    "How much protein do I need today?",
+    "What should I eat for better iron?",
+    "How to lower cholesterol?",
+    "Suggest a high protein meal",
+    "Am I on track with my goals?"
   ]
 
   return (
     <div className="ai-chat">
       <h2>🤖 AI Health Coach</h2>
+      
+      {profile && (
+        <div className="profile-context">
+          <small>👤 Coaching {profile.nickname} (BMI: {profile.bmi?.toFixed(1)})</small>
+        </div>
+      )}
       
       <div className="chat-history">
         {conversation.map((msg, idx) => (
@@ -75,7 +80,7 @@ export default function AIChat() {
         <textarea 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask anything about nutrition, workouts, or meal planning..."
+          placeholder="Ask about nutrition, meals, or your progress..."
           rows={3}
           onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && askAI()}
         />
