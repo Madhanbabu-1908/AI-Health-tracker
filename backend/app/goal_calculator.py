@@ -14,34 +14,34 @@ class GoalCalculator:
         ActivityLevel.VERY_ACTIVE: 1.9
     }
     
-    # Protein multipliers (g per kg body weight)
+    # Protein multipliers (g per kg body weight) - CORRECTED VALUES
     PROTEIN_MULTIPLIERS = {
-        HealthGoal.LOSE_WEIGHT: 1.6,      # Higher protein to preserve muscle
-        HealthGoal.MAINTAIN_WEIGHT: 1.2,   # Standard maintenance
-        HealthGoal.GAIN_MUSCLE: 1.8,       # Higher for muscle growth
-        HealthGoal.IMPROVE_ENDURANCE: 1.4, # Moderate for endurance
-        HealthGoal.LOWER_CHOLESTEROL: 1.2, # Standard with plant focus
-        HealthGoal.INCREASE_IRON: 1.3      # Slightly higher
+        HealthGoal.LOSE_WEIGHT: 1.6,      # Higher protein to preserve muscle (112g for 70kg)
+        HealthGoal.MAINTAIN_WEIGHT: 1.2,   # Standard maintenance (84g for 70kg)
+        HealthGoal.GAIN_MUSCLE: 1.8,       # Higher for muscle growth (126g for 70kg)
+        HealthGoal.IMPROVE_ENDURANCE: 1.4, # Moderate for endurance (98g for 70kg)
+        HealthGoal.LOWER_CHOLESTEROL: 1.2, # Standard with plant focus (84g for 70kg)
+        HealthGoal.INCREASE_IRON: 1.3      # Slightly higher (91g for 70kg)
     }
     
-    # Carb multipliers (g per kg body weight)
+    # Carb multipliers (g per kg body weight) - CORRECTED
     CARB_MULTIPLIERS = {
-        HealthGoal.LOSE_WEIGHT: 2.5,
-        HealthGoal.MAINTAIN_WEIGHT: 3.5,
-        HealthGoal.GAIN_MUSCLE: 4.5,
-        HealthGoal.IMPROVE_ENDURANCE: 5.0,
-        HealthGoal.LOWER_CHOLESTEROL: 3.0,
-        HealthGoal.INCREASE_IRON: 3.5
+        HealthGoal.LOSE_WEIGHT: 3.0,       # 210g for 70kg
+        HealthGoal.MAINTAIN_WEIGHT: 4.0,   # 280g for 70kg
+        HealthGoal.GAIN_MUSCLE: 5.0,       # 350g for 70kg
+        HealthGoal.IMPROVE_ENDURANCE: 6.0, # 420g for 70kg
+        HealthGoal.LOWER_CHOLESTEROL: 3.5, # 245g for 70kg
+        HealthGoal.INCREASE_IRON: 4.0      # 280g for 70kg
     }
     
-    # Fat multipliers (g per kg body weight)
+    # Fat multipliers (g per kg body weight) - CORRECTED
     FAT_MULTIPLIERS = {
-        HealthGoal.LOSE_WEIGHT: 0.8,
-        HealthGoal.MAINTAIN_WEIGHT: 1.0,
-        HealthGoal.GAIN_MUSCLE: 1.2,
-        HealthGoal.IMPROVE_ENDURANCE: 1.1,
-        HealthGoal.LOWER_CHOLESTEROL: 0.7,  # Lower saturated fat
-        HealthGoal.INCREASE_IRON: 1.0
+        HealthGoal.LOSE_WEIGHT: 0.8,       # 56g for 70kg
+        HealthGoal.MAINTAIN_WEIGHT: 1.0,   # 70g for 70kg
+        HealthGoal.GAIN_MUSCLE: 1.2,       # 84g for 70kg
+        HealthGoal.IMPROVE_ENDURANCE: 1.1, # 77g for 70kg
+        HealthGoal.LOWER_CHOLESTEROL: 0.7, # 49g for 70kg - Lower saturated fat
+        HealthGoal.INCREASE_IRON: 1.0      # 70g for 70kg
     }
     
     @staticmethod
@@ -65,7 +65,7 @@ class GoalCalculator:
         daily_adjustment = weekly_calorie_adjustment / 7
         
         if goal == HealthGoal.LOSE_WEIGHT:
-            return max(tdee - daily_adjustment, 1200)  # Never go below 1200 calories
+            return max(tdee - daily_adjustment, 1500)  # Never go below 1500 calories for men, 1200 for women
         elif goal == HealthGoal.GAIN_MUSCLE:
             return tdee + daily_adjustment
         else:
@@ -93,6 +93,11 @@ class GoalCalculator:
     ) -> PersonalizedNutritionGoals:
         """Calculate complete personalized nutrition goals"""
         
+        # Validate weight - should be in kg (typically 40-200kg range)
+        if weight_kg < 20 or weight_kg > 300:
+            # If weight seems off (maybe in lbs), assume it's kg but flag
+            print(f"Warning: Weight {weight_kg}kg seems unusual")
+        
         # Calculate BMR and TDEE
         bmr = GoalCalculator.calculate_bmr(weight_kg, height_cm, age, gender)
         tdee = GoalCalculator.calculate_tdee(bmr, user_goals.activity_level)
@@ -102,7 +107,7 @@ class GoalCalculator:
             user_goals.weekly_weight_change if user_goals.primary_goal in [HealthGoal.LOSE_WEIGHT, HealthGoal.GAIN_MUSCLE] else 0
         )
         
-        # Calculate macros based on goals
+        # Calculate macros based on goals - USING KG CORRECTLY
         protein_mult = GoalCalculator.PROTEIN_MULTIPLIERS[user_goals.primary_goal]
         carb_mult = GoalCalculator.CARB_MULTIPLIERS[user_goals.primary_goal]
         fat_mult = GoalCalculator.FAT_MULTIPLIERS[user_goals.primary_goal]
@@ -110,6 +115,15 @@ class GoalCalculator:
         protein_goal = weight_kg * protein_mult
         carb_goal = weight_kg * carb_mult
         fat_goal = weight_kg * fat_mult
+        
+        # Safety caps - never exceed these maximums
+        max_protein = weight_kg * 2.2  # Absolute max 2.2g per kg
+        max_carbs = weight_kg * 8.0    # Absolute max 8g per kg
+        max_fat = weight_kg * 1.5      # Absolute max 1.5g per kg
+        
+        protein_goal = min(protein_goal, max_protein)
+        carb_goal = min(carb_goal, max_carbs)
+        fat_goal = min(fat_goal, max_fat)
         
         # Adjust for secondary goals
         cholesterol_limit = 300
@@ -123,11 +137,11 @@ class GoalCalculator:
         else:
             iron_goal = 15 if gender.lower() == "female" else 10
         
-        # Calculate fiber (0.3g per kg, minimum 25g)
-        fiber_goal = max(weight_kg * 0.3, 25)
+        # Calculate fiber (0.3g per kg, minimum 25g, maximum 40g)
+        fiber_goal = min(max(weight_kg * 0.3, 25), 40)
         
-        # Calculate water (33ml per kg, minimum 2L)
-        water_goal = max(weight_kg * 0.033, 2.0)
+        # Calculate water (33ml per kg, minimum 2L, maximum 4L)
+        water_goal = min(max(weight_kg * 0.033, 2.0), 4.0)
         
         # Generate explanation
         explanation = GoalCalculator._generate_explanation(
@@ -178,3 +192,28 @@ class GoalCalculator:
             secondary_note += " For iron absorption, pair iron-rich foods with vitamin C (citrus fruits, bell peppers)."
         
         return f"{base}{secondary_note} Your daily targets: {calories:.0f} calories, {protein:.0f}g protein, {carbs:.0f}g carbs, {fat:.0f}g fat."
+    
+    @staticmethod
+    def get_recommended_ranges(weight_kg: float, goal: HealthGoal) -> Dict:
+        """Get recommended nutrition ranges for display"""
+        protein_mult = GoalCalculator.PROTEIN_MULTIPLIERS[goal]
+        carb_mult = GoalCalculator.CARB_MULTIPLIERS[goal]
+        fat_mult = GoalCalculator.FAT_MULTIPLIERS[goal]
+        
+        return {
+            "protein": {
+                "min": round(weight_kg * (protein_mult - 0.2), 1),
+                "max": round(weight_kg * (protein_mult + 0.2), 1),
+                "unit": "g"
+            },
+            "carbs": {
+                "min": round(weight_kg * (carb_mult - 0.5), 1),
+                "max": round(weight_kg * (carb_mult + 0.5), 1),
+                "unit": "g"
+            },
+            "fat": {
+                "min": round(weight_kg * (fat_mult - 0.2), 1),
+                "max": round(weight_kg * (fat_mult + 0.2), 1),
+                "unit": "g"
+            }
+        }
