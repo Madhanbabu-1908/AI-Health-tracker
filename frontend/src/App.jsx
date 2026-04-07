@@ -13,6 +13,7 @@ function App() {
   const [profileInitialized, setProfileInitialized] = useState(false)
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   
   const [formData, setFormData] = useState({
     nickname: '',
@@ -53,14 +54,21 @@ function App() {
         const data = await response.json()
         setProfile(data)
         
-        const goalsResponse = await fetch(`${API_BASE_URL}/nutrition-goals`)
-        const goalsData = await goalsResponse.json()
-        setNutritionGoals(goalsData)
+        // Fetch nutrition goals separately
+        try {
+          const goalsResponse = await fetch(`${API_BASE_URL}/nutrition-goals`)
+          if (goalsResponse.ok) {
+            const goalsData = await goalsResponse.json()
+            setNutritionGoals(goalsData)
+          }
+        } catch (err) {
+          console.error('Error fetching goals:', err)
+        }
         
         setProfileInitialized(true)
       }
     } catch (error) {
-      console.error('Profile not found')
+      console.error('Profile not found - showing onboarding')
     }
   }
 
@@ -80,7 +88,16 @@ function App() {
   const initializeProfile = async (e) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
+    
     try {
+      // Validate inputs
+      if (!formData.nickname || !formData.height || !formData.weight || !formData.age) {
+        setError('Please fill all required fields')
+        setLoading(false)
+        return
+      }
+      
       const params = new URLSearchParams({
         nickname: formData.nickname,
         height: parseFloat(formData.height),
@@ -95,51 +112,107 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/user/setup-goals?${params}`, {
         method: 'POST'
       })
+      
       const data = await response.json()
+      
       if (data.success) {
         setProfile(data.profile)
         setNutritionGoals(data.nutrition_goals)
         setProfileInitialized(true)
-        alert(data.message)
+        // Optional: Show success message
+        console.log('Profile created successfully!')
+      } else {
+        setError(data.message || 'Failed to create profile')
       }
     } catch (error) {
-      alert('Error setting up profile. Please try again.')
+      console.error('Error setting up profile:', error)
+      setError('Error connecting to server. Please try again.')
     }
     setLoading(false)
   }
 
+  // Loading state while checking profile
+  if (!profileInitialized && !profile && !error) {
+    return (
+      <div className="app">
+        <header>
+          <h1>🏋️ Madhan Health Tracker</h1>
+          <p>Personalized Nutrition Coach</p>
+        </header>
+        <div className="content">
+          <div className="loading">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
+  // Onboarding screens
   if (!profileInitialized) {
     return (
       <div className="app">
         <header>
-          <h1>🏋️ AI Health Tracker</h1>
+          <h1>🏋️ Madhan Health Tracker</h1>
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
           <div className="onboarding">
             <h2>Welcome! Let's set up your profile</h2>
             
+            {error && <div className="error-message">{error}</div>}
+            
             {step === 1 && (
-              <form onSubmit={() => setStep(2)}>
+              <form onSubmit={(e) => { e.preventDefault(); setStep(2); }}>
                 <h3>Basic Information</h3>
-                <input type="text" name="nickname" placeholder="Nickname" value={formData.nickname} onChange={handleInputChange} required />
-                <input type="number" name="age" placeholder="Age" value={formData.age} onChange={handleInputChange} required />
+                <input 
+                  type="text" 
+                  name="nickname" 
+                  placeholder="Nickname" 
+                  value={formData.nickname} 
+                  onChange={handleInputChange} 
+                  required 
+                />
+                <input 
+                  type="number" 
+                  name="age" 
+                  placeholder="Age" 
+                  value={formData.age} 
+                  onChange={handleInputChange} 
+                  required 
+                />
                 <select name="gender" value={formData.gender} onChange={handleInputChange}>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
-                <input type="number" name="height" placeholder="Height (cm)" value={formData.height} onChange={handleInputChange} required />
-                <input type="number" name="weight" placeholder="Weight (kg)" value={formData.weight} onChange={handleInputChange} required />
+                <input 
+                  type="number" 
+                  name="height" 
+                  placeholder="Height (cm)" 
+                  value={formData.height} 
+                  onChange={handleInputChange} 
+                  required 
+                />
+                <input 
+                  type="number" 
+                  name="weight" 
+                  placeholder="Weight (kg)" 
+                  value={formData.weight} 
+                  onChange={handleInputChange} 
+                  required 
+                />
                 <button type="submit">Next →</button>
               </form>
             )}
             
             {step === 2 && (
-              <form onSubmit={() => setStep(3)}>
+              <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
                 <h3>What's your primary health goal?</h3>
                 <div className="goals-grid">
                   {goalsList.map(goal => (
-                    <div key={goal.value} className={`goal-card ${formData.primary_goal === goal.value ? 'selected' : ''}`} onClick={() => setFormData({ ...formData, primary_goal: goal.value })}>
+                    <div 
+                      key={goal.value} 
+                      className={`goal-card ${formData.primary_goal === goal.value ? 'selected' : ''}`} 
+                      onClick={() => setFormData({ ...formData, primary_goal: goal.value })}
+                    >
                       <h4>{goal.label}</h4>
                       <p>{goal.description}</p>
                     </div>
@@ -150,11 +223,15 @@ function App() {
             )}
             
             {step === 3 && (
-              <form onSubmit={() => setStep(4)}>
+              <form onSubmit={(e) => { e.preventDefault(); setStep(4); }}>
                 <h3>What's your activity level?</h3>
                 <div className="activity-grid">
                   {activityLevels.map(level => (
-                    <div key={level.value} className={`activity-card ${formData.activity_level === level.value ? 'selected' : ''}`} onClick={() => setFormData({ ...formData, activity_level: level.value })}>
+                    <div 
+                      key={level.value} 
+                      className={`activity-card ${formData.activity_level === level.value ? 'selected' : ''}`} 
+                      onClick={() => setFormData({ ...formData, activity_level: level.value })}
+                    >
                       <h4>{level.label}</h4>
                       <p>{level.description}</p>
                     </div>
@@ -170,12 +247,18 @@ function App() {
                 <div className="secondary-goals">
                   {goalsList.filter(g => g.value !== formData.primary_goal).map(goal => (
                     <label key={goal.value} className="checkbox-label">
-                      <input type="checkbox" checked={formData.secondary_goals.includes(goal.value)} onChange={() => toggleSecondaryGoal(goal.value)} />
+                      <input 
+                        type="checkbox" 
+                        checked={formData.secondary_goals.includes(goal.value)} 
+                        onChange={() => toggleSecondaryGoal(goal.value)} 
+                      />
                       {goal.label}
                     </label>
                   ))}
                 </div>
-                <button type="submit" disabled={loading}>{loading ? 'Creating your plan...' : 'Start My Journey 🚀'}</button>
+                <button type="submit" disabled={loading}>
+                  {loading ? 'Creating your plan...' : 'Start My Journey 🚀'}
+                </button>
               </form>
             )}
           </div>
@@ -184,11 +267,23 @@ function App() {
     )
   }
 
+  // Main app - ensure nutritionGoals has default values if not loaded
+  const safeNutritionGoals = nutritionGoals || {
+    protein_goal: 100,
+    calorie_goal: 2500,
+    cholesterol_limit: 300,
+    carb_limit: 300,
+    iron_goal: 15,
+    fat_goal: 70,
+    fiber_goal: 25,
+    water_goal: 2.5
+  }
+
   return (
     <div className="app">
       <header>
-        <h1>🏋️ AI Health Tracker</h1>
-        <p>👤 {profile.nickname} • BMI: {profile.bmi?.toFixed(1)} • Goal: {nutritionGoals?.protein_goal}g protein</p>
+        <h1>🏋️ Madhan Health Tracker</h1>
+        <p>👤 {profile?.nickname || 'User'} • BMI: {profile?.bmi?.toFixed(1) || '--'} • Goal: {safeNutritionGoals.protein_goal}g protein</p>
       </header>
 
       <div className="tabs">
@@ -200,11 +295,11 @@ function App() {
       </div>
 
       <div className="content">
-        {activeTab === 'dashboard' && <Dashboard profile={profile} nutritionGoals={nutritionGoals} />}
+        {activeTab === 'dashboard' && <Dashboard profile={profile} nutritionGoals={safeNutritionGoals} />}
         {activeTab === 'log' && <FoodLogger />}
         {activeTab === 'add' && <AddFood />}
         {activeTab === 'history' && <HistoryChart />}
-        {activeTab === 'ai' && <AIChat profile={profile} nutritionGoals={nutritionGoals} />}
+        {activeTab === 'ai' && <AIChat profile={profile} nutritionGoals={safeNutritionGoals} />}
       </div>
     </div>
   )
