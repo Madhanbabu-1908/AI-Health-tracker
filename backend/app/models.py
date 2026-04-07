@@ -44,6 +44,12 @@ class UserGoals(BaseModel):
 
 # ========== Nutrition Models ==========
 
+class NutritionGoal(BaseModel):
+    """Simple nutrition goals for database storage"""
+    protein_goal: float = 100
+    calorie_goal: float = 2500
+    cholesterol_limit: float = 300
+
 class PersonalizedNutritionGoals(BaseModel):
     protein_goal: float
     calorie_goal: float
@@ -56,6 +62,8 @@ class PersonalizedNutritionGoals(BaseModel):
     vitamin_d_goal: float
     water_goal: float
     explanation: str
+
+# ========== Food Models ==========
 
 class FoodEntry(BaseModel):
     id: Optional[str] = None
@@ -82,6 +90,8 @@ class FoodItem(BaseModel):
     default_unit: str = "serving"
     usage_count: int = 0
     created_at: datetime = datetime.now()
+
+# ========== AI Models ==========
 
 class AIRequest(BaseModel):
     query: str
