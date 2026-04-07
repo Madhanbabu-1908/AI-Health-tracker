@@ -607,3 +607,53 @@ header p {
   width: auto;
   margin: 0;
 }
+
+/* Simple chart styles */
+.simple-chart {
+  margin-top: 20px;
+}
+
+.chart-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.chart-label {
+  width: 50px;
+  font-size: 12px;
+}
+
+.chart-bar {
+  background: #667eea;
+  color: white;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: right;
+  font-size: 12px;
+  min-width: 40px;
+}
+
+/* Error message */
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+/* BMI display */
+.bmi-normal {
+  color: #4caf50;
+}
+
+.bmi-warning {
+  color: #ffaa44;
+}
+
+.bmi-danger {
+  color: #ff4444;
+}
