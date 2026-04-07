@@ -26,27 +26,29 @@ FOOD_ENTRIES_FILE = os.path.join(DATA_DIR, "food_entries.json")
 USER_FOODS_FILE = os.path.join(DATA_DIR, "user_foods.json")
 
 # Initialize files
-if not os.path.exists(PROFILE_FILE):
-    with open(PROFILE_FILE, "w") as f:
-        json.dump(None, f)
+def init_files():
+    if not os.path.exists(PROFILE_FILE):
+        with open(PROFILE_FILE, "w") as f:
+            json.dump(None, f)
+    
+    if not os.path.exists(GOALS_FILE):
+        with open(GOALS_FILE, "w") as f:
+            json.dump({
+                "protein_goal": 100,
+                "calorie_goal": 2500,
+                "cholesterol_limit": 300
+            }, f)
+    
+    if not os.path.exists(FOOD_ENTRIES_FILE):
+        with open(FOOD_ENTRIES_FILE, "w") as f:
+            json.dump({}, f)
+    
+    if not os.path.exists(USER_FOODS_FILE):
+        with open(USER_FOODS_FILE, "w") as f:
+            json.dump({}, f)
 
-if not os.path.exists(GOALS_FILE):
-    with open(GOALS_FILE, "w") as f:
-        json.dump({
-            "protein_goal": 100,
-            "calorie_goal": 2500,
-            "cholesterol_limit": 300
-        }, f)
+init_files()
 
-if not os.path.exists(FOOD_ENTRIES_FILE):
-    with open(FOOD_ENTRIES_FILE, "w") as f:
-        json.dump({}, f)
-
-if not os.path.exists(USER_FOODS_FILE):
-    with open(USER_FOODS_FILE, "w") as f:
-        json.dump({}, f)
-
-# Helper functions
 def read_json(filepath):
     with open(filepath, "r") as f:
         return json.load(f)
@@ -56,8 +58,47 @@ def write_json(filepath, data):
         json.dump(data, f, indent=2)
 
 def calculate_bmi(height_cm, weight_kg):
+    """Calculate BMI - height in cm, weight in kg"""
+    if height_cm <= 0 or weight_kg <= 0:
+        return 0
     height_m = height_cm / 100
-    return round(weight_kg / (height_m * height_m), 1)
+    bmi = weight_kg / (height_m * height_m)
+    return round(bmi, 1)
+
+def calculate_protein_goal(weight_kg, primary_goal):
+    """Calculate protein goal based on weight and goal"""
+    if primary_goal == "lose_weight":
+        return round(weight_kg * 1.6, 0)  # 1.6g per kg for weight loss
+    elif primary_goal == "gain_muscle":
+        return round(weight_kg * 1.8, 0)  # 1.8g per kg for muscle gain
+    else:
+        return round(weight_kg * 1.2, 0)  # 1.2g per kg for maintenance
+
+def calculate_calorie_goal(weight_kg, height_cm, age, gender, activity_level, primary_goal):
+    """Calculate calorie goal"""
+    # BMR calculation (Mifflin-St Jeor)
+    if gender == "female":
+        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161
+    else:
+        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
+    
+    # Activity multiplier
+    activity_mult = {
+        "sedentary": 1.2,
+        "light": 1.375,
+        "moderate": 1.55,
+        "active": 1.725,
+        "very_active": 1.9
+    }.get(activity_level, 1.55)
+    
+    tdee = bmr * activity_mult
+    
+    if primary_goal == "lose_weight":
+        return round(tdee - 500, 0)
+    elif primary_goal == "gain_muscle":
+        return round(tdee + 300, 0)
+    else:
+        return round(tdee, 0)
 
 # ========== API Endpoints ==========
 
@@ -67,52 +108,41 @@ async def root():
 
 @app.post("/user/setup-goals")
 async def setup_user_goals(request: Request):
-    """Initialize user with health goals - accepts both query params and JSON"""
+    """Initialize user with health goals"""
     
     try:
-        # Try to get from query params first
-        if request.query_params:
-            nickname = request.query_params.get("nickname")
-            height = float(request.query_params.get("height", 0))
-            weight = float(request.query_params.get("weight", 0))
-            age = int(request.query_params.get("age", 0))
-            gender = request.query_params.get("gender", "male")
-            primary_goal = request.query_params.get("primary_goal", "maintain_weight")
-            activity_level = request.query_params.get("activity_level", "moderate")
-        else:
-            # Try to get from JSON body
-            body = await request.json()
-            nickname = body.get("nickname")
-            height = float(body.get("height", 0))
-            weight = float(body.get("weight", 0))
-            age = int(body.get("age", 0))
-            gender = body.get("gender", "male")
-            primary_goal = body.get("primary_goal", "maintain_weight")
-            activity_level = body.get("activity_level", "moderate")
+        # Get JSON body
+        body = await request.json()
+        
+        nickname = body.get("nickname")
+        height = float(body.get("height", 0))
+        weight = float(body.get("weight", 0))
+        age = int(body.get("age", 0))
+        gender = body.get("gender", "male")
+        primary_goal = body.get("primary_goal", "maintain_weight")
+        activity_level = body.get("activity_level", "moderate")
+        
+        print(f"Received: height={height}cm, weight={weight}kg, age={age}, gender={gender}")
         
         # Validate
         if not nickname:
             return {"success": False, "message": "Nickname is required"}
         
         if height < 50 or height > 250:
-            return {"success": False, "message": "Height must be between 50cm and 250cm"}
+            return {"success": False, "message": f"Height must be between 50cm and 250cm (got {height}cm)"}
         
         if weight < 20 or weight > 300:
-            return {"success": False, "message": "Weight must be between 20kg and 300kg"}
+            return {"success": False, "message": f"Weight must be between 20kg and 300kg (got {weight}kg)"}
+        
+        if age < 10 or age > 120:
+            return {"success": False, "message": f"Age must be between 10 and 120 (got {age})"}
         
         # Calculate
         bmi = calculate_bmi(height, weight)
+        protein_goal = calculate_protein_goal(weight, primary_goal)
+        calorie_goal = calculate_calorie_goal(weight, height, age, gender, activity_level, primary_goal)
         
-        # Calculate protein goal based on goal
-        if primary_goal == "lose_weight":
-            protein_goal = round(weight * 1.6, 1)
-            calorie_goal = 2200
-        elif primary_goal == "gain_muscle":
-            protein_goal = round(weight * 1.8, 1)
-            calorie_goal = 2800
-        else:
-            protein_goal = round(weight * 1.2, 1)
-            calorie_goal = 2500
+        print(f"Calculated: BMI={bmi}, Protein Goal={protein_goal}g, Calorie Goal={calorie_goal}")
         
         # Save profile
         profile = {
@@ -133,8 +163,8 @@ async def setup_user_goals(request: Request):
             "protein_goal": protein_goal,
             "calorie_goal": calorie_goal,
             "cholesterol_limit": 300,
-            "carb_goal": round(weight * 4, 1),
-            "fat_goal": round(weight * 1, 1),
+            "carb_goal": round(weight * 4, 0),
+            "fat_goal": round(weight * 0.8, 0),
             "iron_goal": 15,
             "explanation": f"Based on your {primary_goal.replace('_', ' ')} goal"
         }
@@ -156,7 +186,7 @@ async def setup_user_goals(request: Request):
             "nutrition_goals": nutrition_goals,
             "bmi": bmi,
             "bmi_category": bmi_category,
-            "message": nutrition_goals["explanation"]
+            "message": f"Welcome {nickname}! Your BMI is {bmi} ({bmi_category}). Your daily protein goal is {protein_goal}g."
         }
         
     except Exception as e:
@@ -215,7 +245,7 @@ async def add_food(
     
     foods[food_id] = new_food
     write_json(USER_FOODS_FILE, foods)
-    return {"success": True, "food": new_food}
+    return {"success": True, "food": new_food, "message": f"Added {name}"}
 
 @app.post("/food/log")
 async def log_food(name: str, quantity: float = 1.0):
@@ -273,7 +303,9 @@ async def get_today():
     return {
         "totals": totals,
         "percentages": {
-            "protein": round((totals["protein"] / goals["protein_goal"]) * 100, 1) if goals["protein_goal"] > 0 else 0
+            "protein": round((totals["protein"] / goals.get("protein_goal", 100)) * 100, 1) if goals.get("protein_goal", 100) > 0 else 0,
+            "calories": round((totals["calories"] / goals.get("calorie_goal", 2500)) * 100, 1) if goals.get("calorie_goal", 2500) > 0 else 0,
+            "cholesterol": round((totals["cholesterol"] / goals.get("cholesterol_limit", 300)) * 100, 1) if goals.get("cholesterol_limit", 300) > 0 else 0
         }
     }
 
