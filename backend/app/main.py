@@ -45,6 +45,22 @@ async def setup_user_goals(
 ):
     """Initialize user with health goals and get personalized nutrition targets"""
     
+    # Validate height (50cm to 250cm)
+    if height < 50 or height > 250:
+        raise HTTPException(status_code=400, detail="Height must be between 50cm and 250cm")
+    
+    # Validate weight (20kg to 300kg)
+    if weight < 20 or weight > 300:
+        raise HTTPException(status_code=400, detail="Weight must be between 20kg and 300kg")
+    
+    # Calculate BMI correctly (height in cm, convert to meters)
+    height_meters = height / 100
+    bmi = weight / (height_meters * height_meters)
+    
+    # Validate BMI is reasonable (10 to 50)
+    if bmi < 10 or bmi > 50:
+        raise HTTPException(status_code=400, detail=f"Invalid BMI calculation: {bmi:.1f}")
+    
     # Parse secondary goals
     secondary_list = []
     if secondary_goals:
@@ -72,15 +88,12 @@ async def setup_user_goals(
         user_goals=user_goals
     )
     
-    # Calculate BMI
-    bmi = weight / ((height / 100) ** 2) 
-    
     # Save profile
     profile = UserProfile(
         nickname=nickname,
         height=height,
         weight=weight,
-        bmi=bmi,
+        bmi=round(bmi, 1),
         age=age,
         gender=gender,
         primary_goal=primary_goal.value,
@@ -95,7 +108,6 @@ async def setup_user_goals(
     db._write_json("user_goals.json", user_goals.dict())
     
     # Get BMI category
-    bmi_category = "Normal weight"
     if bmi < 18.5:
         bmi_category = "Underweight"
     elif bmi < 25:
