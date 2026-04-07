@@ -7,7 +7,7 @@ import os
 import uuid
 import re
 
-# Import your existing modules
+# Import your modules
 from .models import UserProfile, FoodEntry, AIRequest, HealthGoal, ActivityLevel, PersonalizedNutritionGoals
 from .database import Database
 from .orchestrator import AgenticOrchestrator
@@ -15,7 +15,7 @@ from .goal_calculator import GoalCalculator
 from .ai_agent import AIHealthAgent
 from .mcp_tools import MCPTools
 
-app = FastAPI(title="AI Health Tracker API with MCP")
+app = FastAPI(title="AI Health Tracker API")
 
 # Enable CORS
 app.add_middleware(
@@ -36,51 +36,22 @@ goal_calculator = GoalCalculator()
 # ========== Helper Functions ==========
 
 def calculate_bmi(height_cm, weight_kg):
+    """Calculate BMI from height (cm) and weight (kg)"""
     if height_cm <= 0 or weight_kg <= 0:
         return 0
     height_m = height_cm / 100
     bmi = weight_kg / (height_m * height_m)
     return round(bmi, 1)
 
-def calculate_protein_goal(weight_kg, primary_goal):
-    if primary_goal == "lose_weight":
-        return round(weight_kg * 1.6, 0)
-    elif primary_goal == "gain_muscle":
-        return round(weight_kg * 1.8, 0)
-    else:
-        return round(weight_kg * 1.2, 0)
-
-def calculate_calorie_goal(weight_kg, height_cm, age, gender, activity_level, primary_goal):
-    if gender == "female":
-        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161
-    else:
-        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
-    
-    activity_mult = {
-        "sedentary": 1.2,
-        "light": 1.375,
-        "moderate": 1.55,
-        "active": 1.725,
-        "very_active": 1.9
-    }.get(activity_level, 1.55)
-    
-    tdee = bmr * activity_mult
-    
-    if primary_goal == "lose_weight":
-        return round(tdee - 500, 0)
-    elif primary_goal == "gain_muscle":
-        return round(tdee + 300, 0)
-    else:
-        return round(tdee, 0)
-
 # ========== API Endpoints ==========
 
 @app.get("/")
 async def root():
-    return {"message": "AI Health Tracker API with MCP", "status": "active", "version": "3.0"}
+    return {"message": "AI Health Tracker API", "status": "active", "version": "3.0"}
 
 @app.post("/user/setup-goals")
 async def setup_user_goals(request: Request):
+    """Initialize user profile and calculate ALL goals dynamically"""
     try:
         body = await request.json()
         
@@ -91,14 +62,23 @@ async def setup_user_goals(request: Request):
         gender = body.get("gender", "male")
         primary_goal = body.get("primary_goal", "maintain_weight")
         activity_level = body.get("activity_level", "moderate")
+        secondary_goals = body.get("secondary_goals", [])
         
         if not nickname:
             return {"success": False, "message": "Nickname is required"}
         
-        bmi = calculate_bmi(height, weight)
-        protein_goal = calculate_protein_goal(weight, primary_goal)
-        calorie_goal = calculate_calorie_goal(weight, height, age, gender, activity_level, primary_goal)
+        # Validate inputs
+        if height < 50 or height > 250:
+            return {"success": False, "message": "Height must be between 50cm and 250cm"}
+        if weight < 20 or weight > 300:
+            return {"success": False, "message": "Weight must be between 20kg and 300kg"}
+        if age < 10 or age > 120:
+            return {"success": False, "message": "Age must be between 10 and 120"}
         
+        # Calculate BMI
+        bmi = calculate_bmi(height, weight)
+        
+        # Create profile
         profile = {
             "nickname": nickname,
             "height": height,
@@ -110,20 +90,20 @@ async def setup_user_goals(request: Request):
             "activity_level": activity_level,
             "created_at": datetime.now().isoformat()
         }
-        
-        # Save using database
         db.save_profile(UserProfile(**profile))
         
-        nutrition_goals = {
-            "protein_goal": protein_goal,
-            "calorie_goal": calorie_goal,
-            "cholesterol_limit": 300,
-            "carb_goal": round(weight * 4, 0),
-            "fat_goal": round(weight * 0.8, 0),
-            "iron_goal": 15
+        # Create user goals
+        user_goals = {
+            "primary_goal": primary_goal,
+            "secondary_goals": secondary_goals,
+            "activity_level": activity_level
         }
-        db.update_nutrition_goals(PersonalizedNutritionGoals(**nutrition_goals))
         
+        # Calculate ALL goals dynamically - NO HARDCODING!
+        nutrition_goals = GoalCalculator.calculate_all_goals(profile, user_goals)
+        db.update_nutrition_goals(nutrition_goals)
+        
+        # BMI category
         if bmi < 18.5:
             bmi_category = "Underweight"
         elif bmi < 25:
@@ -136,10 +116,10 @@ async def setup_user_goals(request: Request):
         return {
             "success": True,
             "profile": profile,
-            "nutrition_goals": nutrition_goals,
+            "nutrition_goals": nutrition_goals.dict(),
             "bmi": bmi,
             "bmi_category": bmi_category,
-            "message": f"Welcome {nickname}! Your BMI is {bmi} ({bmi_category})."
+            "message": nutrition_goals.explanation
         }
         
     except Exception as e:
@@ -160,16 +140,17 @@ async def get_nutrition_goals():
 
 @app.delete("/reset-all-data")
 async def reset_all_data():
-    """Delete ALL user data using database methods"""
+    """Delete ALL user data"""
     try:
-        # Clear using database methods
         db.save_profile(None)
-        db.update_nutrition_goals(PersonalizedNutritionGoals(
-            protein_goal=100, calorie_goal=2500, cholesterol_limit=300,
-            carb_goal=250, fat_goal=60, iron_goal=15, fiber_goal=25,
-            water_goal=2.5, calcium_goal=1000, vitamin_d_goal=600,
-            explanation="Default goals"
-        ))
+        # Reset to default goals (will be recalculated on next setup)
+        default_goals = PersonalizedNutritionGoals(
+            protein_goal=100, calorie_goal=2500, carb_goal=250, fat_goal=60,
+            fiber_goal=25, cholesterol_limit=300, iron_goal=15,
+            calcium_goal=1000, vitamin_d_goal=600, water_goal=2.5,
+            explanation="Default goals - please setup your profile"
+        )
+        db.update_nutrition_goals(default_goals)
         return {"success": True, "message": "All data reset successfully"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -196,7 +177,6 @@ async def add_food(
     calories: float = 0,
     unit: str = "serving"
 ):
-    from .models import FoodItem
     food_id = str(uuid.uuid4())[:8]
     new_food = FoodItem(
         id=food_id,
@@ -214,7 +194,6 @@ async def add_food(
 
 @app.post("/food/log")
 async def log_food(name: str, quantity: float = 1.0):
-    from .models import FoodEntry
     foods = db.get_food_items()
     
     food_item = None
@@ -272,7 +251,8 @@ async def get_history(days: int = 7):
             day_total["cost"] += entry.get("cost", 0)
         result.append(day_total)
     
-    return result
+    # Reverse to show oldest first
+    return list(reversed(result))
 
 @app.post("/ai/chat")
 async def ai_chat(request: dict):
@@ -290,7 +270,7 @@ async def ai_chat(request: dict):
         "today": today_totals
     }
     
-    # Use orchestrator to process query (this uses ai_agent and mcp_tools)
+    # Use orchestrator to process query
     result = await orchestrator.process_ai_query(query, context)
     
     return {"response": result.get("response", "I'm here to help!")}
