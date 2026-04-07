@@ -15,6 +15,7 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showReset, setShowReset] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
   
   const [formData, setFormData] = useState({
     nickname: '',
@@ -48,18 +49,26 @@ function App() {
     checkProfile()
   }, [])
 
+  useEffect(() => {
+    // Listen for food logged events
+    const handleFoodLogged = () => setRefreshTrigger(prev => prev + 1)
+    window.addEventListener('foodLogged', handleFoodLogged)
+    window.addEventListener('foodsUpdated', checkProfile)
+    return () => {
+      window.removeEventListener('foodLogged', handleFoodLogged)
+      window.removeEventListener('foodsUpdated', checkProfile)
+    }
+  }, [])
+
   const checkProfile = async () => {
     setLoading(true)
     setError('')
     
     try {
-      console.log('Checking profile at:', `${API_BASE_URL}/profile`)
-      
       const response = await fetch(`${API_BASE_URL}/profile`)
       
       if (response.ok) {
         const data = await response.json()
-        console.log('Profile found:', data)
         if (data && data.nickname) {
           setProfile(data)
           setShowReset(true)
@@ -79,7 +88,6 @@ function App() {
           setProfileInitialized(false)
         }
       } else if (response.status === 404) {
-        console.log('No profile found - showing onboarding')
         setProfileInitialized(false)
         setShowReset(false)
       } else {
@@ -94,11 +102,12 @@ function App() {
   }
 
   const resetProfile = async () => {
-    if (confirm('⚠️ WARNING: This will permanently delete ALL your data including:\n\n• Profile information\n• All food entries (history)\n• All custom foods you added\n\nThis cannot be undone. Are you sure?')) {
+    if (confirm('⚠️ WARNING: This will permanently delete ALL your data including profile, food history, and custom foods. This cannot be undone. Are you sure?')) {
       setLoading(true)
       try {
         const response = await fetch(`${API_BASE_URL}/reset-all-data`, { 
-          method: 'DELETE' 
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
         })
         const data = await response.json()
         
@@ -107,14 +116,14 @@ function App() {
           setNutritionGoals(null)
           setProfileInitialized(false)
           setShowReset(false)
-          alert('✅ All data has been reset. The page will reload.')
+          alert('✅ All data has been reset successfully.')
           window.location.reload()
         } else {
-          alert('Failed to reset data: ' + data.message)
+          alert('Failed to reset data: ' + (data.message || 'Unknown error'))
         }
       } catch (error) {
         console.error('Error resetting data:', error)
-        alert('Error resetting data. Please try again.')
+        alert('Error resetting data: ' + error.message)
       } finally {
         setLoading(false)
       }
@@ -161,7 +170,6 @@ function App() {
         return
       }
       
-      // Send as JSON body instead of query params
       const requestBody = {
         nickname: formData.nickname,
         height: heightCm,
@@ -173,13 +181,9 @@ function App() {
         secondary_goals: formData.secondary_goals
       }
       
-      console.log('Creating profile with:', requestBody)
-      
       const response = await fetch(`${API_BASE_URL}/user/setup-goals`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       })
       
@@ -200,7 +204,6 @@ function App() {
     setLoading(false)
   }
 
-  // Show loading state
   if (loading) {
     return (
       <div className="app">
@@ -209,15 +212,12 @@ function App() {
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
-          <div className="loading">
-            <div>Loading...</div>
-          </div>
+          <div className="loading">Loading...</div>
         </div>
       </div>
     )
   }
 
-  // Show error with retry button
   if (error && !profileInitialized) {
     return (
       <div className="app">
@@ -226,22 +226,16 @@ function App() {
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
-          <div className="error-message" style={{ background: '#fee', color: '#c00', padding: '20px', borderRadius: '16px', textAlign: 'center' }}>
+          <div className="error-message">
             <h3>Connection Error</h3>
             <p>{error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              style={{ marginTop: '16px', padding: '10px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer' }}
-            >
-              Retry Connection
-            </button>
+            <button onClick={() => window.location.reload()}>Retry</button>
           </div>
         </div>
       </div>
     )
   }
 
-  // Onboarding screens
   if (!profileInitialized) {
     return (
       <div className="app">
@@ -258,42 +252,14 @@ function App() {
             {step === 1 && (
               <form onSubmit={(e) => { e.preventDefault(); setStep(2); }}>
                 <h3>Basic Information</h3>
-                <input 
-                  type="text" 
-                  name="nickname" 
-                  placeholder="Nickname" 
-                  value={formData.nickname} 
-                  onChange={handleInputChange} 
-                  required 
-                />
-                <input 
-                  type="number" 
-                  name="age" 
-                  placeholder="Age" 
-                  value={formData.age} 
-                  onChange={handleInputChange} 
-                  required 
-                />
+                <input type="text" name="nickname" placeholder="Nickname" value={formData.nickname} onChange={handleInputChange} required />
+                <input type="number" name="age" placeholder="Age" value={formData.age} onChange={handleInputChange} required />
                 <select name="gender" value={formData.gender} onChange={handleInputChange}>
                   <option value="male">Male</option>
                   <option value="female">Female</option>
                 </select>
-                <input 
-                  type="number" 
-                  name="height" 
-                  placeholder="Height (cm) - e.g., 170" 
-                  value={formData.height} 
-                  onChange={handleInputChange} 
-                  required 
-                />
-                <input 
-                  type="number" 
-                  name="weight" 
-                  placeholder="Weight (kg) - e.g., 70" 
-                  value={formData.weight} 
-                  onChange={handleInputChange} 
-                  required 
-                />
+                <input type="number" name="height" placeholder="Height (cm) - e.g., 170" value={formData.height} onChange={handleInputChange} required />
+                <input type="number" name="weight" placeholder="Weight (kg) - e.g., 70" value={formData.weight} onChange={handleInputChange} required />
                 <button type="submit">Next →</button>
               </form>
             )}
@@ -303,11 +269,7 @@ function App() {
                 <h3>What's your primary health goal?</h3>
                 <div className="goals-grid">
                   {goalsList.map(goal => (
-                    <div 
-                      key={goal.value} 
-                      className={`goal-card ${formData.primary_goal === goal.value ? 'selected' : ''}`} 
-                      onClick={() => setFormData({ ...formData, primary_goal: goal.value })}
-                    >
+                    <div key={goal.value} className={`goal-card ${formData.primary_goal === goal.value ? 'selected' : ''}`} onClick={() => setFormData({ ...formData, primary_goal: goal.value })}>
                       <h4>{goal.label}</h4>
                       <p>{goal.description}</p>
                     </div>
@@ -322,11 +284,7 @@ function App() {
                 <h3>What's your activity level?</h3>
                 <div className="activity-grid">
                   {activityLevels.map(level => (
-                    <div 
-                      key={level.value} 
-                      className={`activity-card ${formData.activity_level === level.value ? 'selected' : ''}`} 
-                      onClick={() => setFormData({ ...formData, activity_level: level.value })}
-                    >
+                    <div key={level.value} className={`activity-card ${formData.activity_level === level.value ? 'selected' : ''}`} onClick={() => setFormData({ ...formData, activity_level: level.value })}>
                       <h4>{level.label}</h4>
                       <p>{level.description}</p>
                     </div>
@@ -342,18 +300,12 @@ function App() {
                 <div className="secondary-goals">
                   {goalsList.filter(g => g.value !== formData.primary_goal).map(goal => (
                     <label key={goal.value} className="checkbox-label">
-                      <input 
-                        type="checkbox" 
-                        checked={formData.secondary_goals.includes(goal.value)} 
-                        onChange={() => toggleSecondaryGoal(goal.value)} 
-                      />
+                      <input type="checkbox" checked={formData.secondary_goals.includes(goal.value)} onChange={() => toggleSecondaryGoal(goal.value)} />
                       {goal.label}
                     </label>
                   ))}
                 </div>
-                <button type="submit" disabled={loading}>
-                  {loading ? 'Creating your plan...' : 'Start My Journey 🚀'}
-                </button>
+                <button type="submit" disabled={loading}>{loading ? 'Creating your plan...' : 'Start My Journey 🚀'}</button>
               </form>
             )}
           </div>
@@ -362,14 +314,13 @@ function App() {
     )
   }
 
-  // Safe defaults if nutritionGoals not loaded
   const safeNutritionGoals = nutritionGoals || {
-    protein_goal: 100,
-    calorie_goal: 2500,
+    protein_goal: 72,
+    calorie_goal: 2200,
     cholesterol_limit: 300,
-    carb_limit: 300,
+    carb_limit: 250,
     iron_goal: 15,
-    fat_goal: 70,
+    fat_goal: 60,
     fiber_goal: 25,
     water_goal: 2.5
   }
@@ -404,17 +355,14 @@ function App() {
 
       {showReset && (
         <div style={{ padding: '10px 20px', textAlign: 'center' }}>
-          <button 
-            onClick={resetProfile}
-            style={{ padding: '8px 16px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-          >
-            Reset All Data (Delete Everything)
+          <button onClick={resetProfile} style={{ padding: '8px 16px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+            Reset All Data
           </button>
         </div>
       )}
 
       <div className="content">
-        {activeTab === 'dashboard' && <Dashboard profile={profile} nutritionGoals={safeNutritionGoals} />}
+        {activeTab === 'dashboard' && <Dashboard profile={profile} nutritionGoals={safeNutritionGoals} refreshTrigger={refreshTrigger} />}
         {activeTab === 'log' && <FoodLogger />}
         {activeTab === 'add' && <AddFood />}
         {activeTab === 'history' && <HistoryChart />}
