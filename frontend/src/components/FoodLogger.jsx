@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { API_BASE_URL } from '../services/api'
 
 export default function FoodLogger() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState([])
   const [foods, setFoods] = useState([])
   const [quantity, setQuantity] = useState(1)
   const [message, setMessage] = useState('')
@@ -23,92 +21,65 @@ export default function FoodLogger() {
     }
   }
 
-  const searchFoods = async () => {
-    if (!searchQuery.trim()) return
-    
-    setLoading(true)
-    try {
-      const response = await fetch(`${API_BASE_URL}/food/search?query=${encodeURIComponent(searchQuery)}`)
-      const data = await response.json()
-      setSearchResults(data.results || [])
-    } catch (error) {
-      console.error('Error searching foods:', error)
-      setMessage('❌ Error searching. Please try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const logFood = async (food) => {
     setLoading(true)
     try {
-      const url = `${API_BASE_URL}/food/log?name=${encodeURIComponent(food.name)}&quantity=${quantity}&unit=${food.default_unit || 'serving'}`
-      const response = await fetch(url, { method: 'POST' })
+      const response = await fetch(`${API_BASE_URL}/food/log?name=${encodeURIComponent(food.name)}&quantity=${quantity}`, {
+        method: 'POST'
+      })
       const data = await response.json()
       
       if (data.success) {
         setMessage(`✅ Logged ${quantity} × ${food.name}`)
         setTimeout(() => setMessage(''), 3000)
-        setSearchQuery('')
-        setSearchResults([])
         setQuantity(1)
       } else {
-        setMessage(`❌ ${data.error || 'Failed to log food'}`)
+        setMessage(`❌ ${data.detail || 'Failed to log food'}`)
       }
     } catch (error) {
-      console.error('Error logging food:', error)
+      console.error('Error:', error)
       setMessage('❌ Error connecting to server')
-    } finally {
-      setLoading(false)
     }
+    setLoading(false)
+  }
+
+  if (foods.length === 0) {
+    return (
+      <div className="food-logger">
+        <h2>🍽️ Log Food</h2>
+        <div className="empty-state">
+          <p>You haven't added any foods yet!</p>
+          <p>Go to the <strong>"Add Food"</strong> tab to add your first food.</p>
+          <p>Once added, you'll see them here to log.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="food-logger">
-      <div className="search-section">
-        <h2>🔍 Search Food</h2>
-        <div className="search-box">
-          <input 
-            type="text" 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search for food..."
-            onKeyPress={(e) => e.key === 'Enter' && searchFoods()}
-          />
-          <button onClick={searchFoods} disabled={loading}>Search</button>
-        </div>
-        
-        {searchResults.length > 0 && (
-          <div className="search-results">
-            <h3>Search Results:</h3>
-            {searchResults.map((food, idx) => (
-              <div key={idx} className="food-item" onClick={() => logFood(food)}>
-                <div className="food-name">{food.name}</div>
-                <div className="food-nutrition">
-                  <span>🥩 {food.protein_per_unit}g</span>
-                  <span>🍞 {food.carbs_per_unit}g</span>
-                  <span>🍳 {food.cholesterol_per_unit}mg</span>
-                  <span>💰 ₹{food.cost}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
+      <h2>🍽️ Log Your Meal</h2>
+      
       <div className="foods-section">
-        <h3>📚 Your Food Library</h3>
+        <h3>📚 Your Foods ({foods.length})</h3>
         <div className="food-grid">
           {foods.map((food) => (
-            <button key={food.id} onClick={() => logFood(food)} className="food-btn" disabled={loading}>
-              {food.name}
-              <small>🥩 {food.protein_per_unit}g | 💰 ₹{food.cost}</small>
+            <button 
+              key={food.id} 
+              onClick={() => logFood(food)} 
+              className="food-card"
+              disabled={loading}
+            >
+              <div className="food-name">{food.name}</div>
+              <div className="food-nutrition">
+                <span>🥩 {food.protein_per_unit}g</span>
+                <span>🔥 {food.calories_per_unit}cal</span>
+                <span>💰 ₹{food.cost}</span>
+              </div>
+              <small>per {food.default_unit}</small>
             </button>
           ))}
         </div>
-        {foods.length === 0 && (
-          <p className="empty-message">No foods added yet. Go to "Add Food" tab to add your first food!</p>
-        )}
       </div>
 
       <div className="quantity-section">
