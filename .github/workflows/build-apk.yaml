@@ -1,0 +1,70 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Install Android SDK
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget unzip
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip commandlinetools-linux-9477386_latest.zip -d android-sdk
+        mkdir -p android-sdk/cmdline-tools/latest
+        mv android-sdk/cmdline-tools/* android-sdk/cmdline-tools/latest/ 2>/dev/null || true
+        export ANDROID_SDK_ROOT=$PWD/android-sdk
+        echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+    
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: |
+        npm install
+        npm run build
+    
+    - name: Setup Capacitor
+      working-directory: ./frontend
+      run: |
+        npm install @capacitor/cli @capacitor/android
+        npx cap init MadhanHealthTracker com.madhan.healthtracker --web-dir=dist
+        npx cap add android
+    
+    - name: Update API URL in build
+      working-directory: ./frontend
+      run: |
+        # Replace API URL with your Render.com URL
+        sed -i "s|https://your-backend.onrender.com|${{ secrets.API_BASE_URL }}|g" src/services/api.js
+    
+    - name: Sync Capacitor
+      working-directory: ./frontend
+      run: npx cap sync android
+    
+    - name: Build APK with Gradle
+      working-directory: ./frontend/android
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleDebug
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: madhan-health-tracker
+        path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
