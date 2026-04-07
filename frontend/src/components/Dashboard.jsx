@@ -1,90 +1,72 @@
 import React, { useState, useEffect } from 'react'
 import { API_BASE_URL } from '../services/api'
 
-export default function Dashboard({ profile, refreshTrigger }) {
-  const [todayData, setTodayData] = useState({ protein: 0, cholesterol: 0, calories: 0 })
-  const [advice, setAdvice] = useState('')
+export default function Dashboard({ profile }) {
+  const [todayData, setTodayData] = useState({ protein: 0, carbs: 0, cholesterol: 0, iron: 0, calories: 0, cost: 0 })
+  const [goals, setGoals] = useState({ protein_goal: 100, cholesterol_limit: 300, carb_limit: 300, iron_goal: 15, calorie_goal: 2500 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchTodayData()
-  }, [refreshTrigger])
+    fetchGoals()
+  }, [])
 
   const fetchTodayData = async () => {
-    setLoading(true)
     try {
       const response = await fetch(`${API_BASE_URL}/today`)
       const data = await response.json()
-      setTodayData({
-        protein: data.protein || 0,
-        cholesterol: data.cholesterol || 0,
-        calories: data.calories || 0
-      })
-      
-      const remainingProtein = Math.max(0, profile.goal_protein - (data.protein || 0))
-      const remainingChol = Math.max(0, profile.cholesterol_limit - (data.cholesterol || 0))
-      
-      if (remainingProtein <= 0) {
-        setAdvice('🎉 Amazing! You hit your protein goal. Focus on recovery.')
-      } else if (remainingChol <= 0) {
-        setAdvice('⚠️ Cholesterol limit reached. Switch to plant proteins.')
-      } else {
-        setAdvice(`💪 Need ${remainingProtein.toFixed(1)}g more protein. ${remainingChol.toFixed(0)}mg cholesterol left.`)
-      }
+      setTodayData(data)
     } catch (error) {
-      console.error('Error fetching today data:', error)
-      setAdvice('Connect to backend to see your progress')
+      console.error('Error:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const proteinPercent = (todayData.protein / profile.goal_protein) * 100
-  const cholesterolPercent = (todayData.cholesterol / profile.cholesterol_limit) * 100
+  const fetchGoals = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/nutrition-goals`)
+      const data = await response.json()
+      setGoals(data)
+    } catch (error) {
+      console.error('Error:', error)
+    }
+  }
 
-  if (loading) return <div className="loading-stats">Loading stats...</div>
+  if (loading) return <div className="loading">Loading...</div>
 
   return (
     <div className="dashboard">
-      <div className="stats">
+      <div className="stats-grid">
         <div className="stat-card">
           <h3>🥩 Protein</h3>
-          <div className="progress-bar">
-            <div className="progress" style={{ width: `${Math.min(proteinPercent, 100)}%` }}>
-              <span>{Math.min(proteinPercent, 100).toFixed(0)}%</span>
-            </div>
-          </div>
-          <p className="stat-value">{todayData.protein.toFixed(1)} / {profile.goal_protein}g</p>
+          <div className="progress-bar"><div className="progress" style={{ width: `${Math.min((todayData.protein / goals.protein_goal) * 100, 100)}%` }}></div></div>
+          <p>{todayData.protein.toFixed(1)} / {goals.protein_goal}g</p>
         </div>
-
+        <div className="stat-card">
+          <h3>🍞 Carbs</h3>
+          <div className="progress-bar"><div className="progress" style={{ width: `${Math.min((todayData.carbs / goals.carb_limit) * 100, 100)}%`, background: '#ffaa44' }}></div></div>
+          <p>{todayData.carbs.toFixed(1)} / {goals.carb_limit}g</p>
+        </div>
         <div className="stat-card">
           <h3>🍳 Cholesterol</h3>
-          <div className="progress-bar">
-            <div className="progress" style={{ 
-              width: `${Math.min(cholesterolPercent, 100)}%`, 
-              background: cholesterolPercent > 80 ? '#ff4444' : '#ffaa44' 
-            }}>
-              <span>{Math.min(cholesterolPercent, 100).toFixed(0)}%</span>
-            </div>
-          </div>
-          <p className="stat-value">{todayData.cholesterol.toFixed(0)} / {profile.cholesterol_limit}mg</p>
-          {todayData.cholesterol > profile.cholesterol_limit && <p className="warning">⚠️ LDL Risk! Consider plant proteins tomorrow.</p>}
+          <div className="progress-bar"><div className="progress" style={{ width: `${Math.min((todayData.cholesterol / goals.cholesterol_limit) * 100, 100)}%`, background: todayData.cholesterol > goals.cholesterol_limit ? '#ff4444' : '#4caf50' }}></div></div>
+          <p>{todayData.cholesterol.toFixed(0)} / {goals.cholesterol_limit}mg</p>
         </div>
-
+        <div className="stat-card">
+          <h3>🩸 Iron</h3>
+          <div className="progress-bar"><div className="progress" style={{ width: `${Math.min((todayData.iron / goals.iron_goal) * 100, 100)}%`, background: '#82ca9d' }}></div></div>
+          <p>{todayData.iron.toFixed(1)} / {goals.iron_goal}mg</p>
+        </div>
         <div className="stat-card">
           <h3>🔥 Calories</h3>
-          <div className="progress-bar">
-            <div className="progress" style={{ width: `${Math.min((todayData.calories / profile.calorie_goal) * 100, 100)}%` }}>
-              <span>{Math.min((todayData.calories / profile.calorie_goal) * 100, 100).toFixed(0)}%</span>
-            </div>
-          </div>
-          <p className="stat-value">{todayData.calories.toFixed(0)} / {profile.calorie_goal} kcal</p>
+          <div className="progress-bar"><div className="progress" style={{ width: `${Math.min((todayData.calories / goals.calorie_goal) * 100, 100)}%` }}></div></div>
+          <p>{todayData.calories.toFixed(0)} / {goals.calorie_goal}</p>
         </div>
-      </div>
-
-      <div className="ai-advice">
-        <h3>🤖 AI Coach Says:</h3>
-        <p>{advice}</p>
+        <div className="stat-card">
+          <h3>💰 Cost</h3>
+          <p>₹{todayData.cost.toFixed(2)}</p>
+        </div>
       </div>
     </div>
   )
