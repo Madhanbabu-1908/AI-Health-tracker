@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-from .models import UserProfile, FoodEntry, FoodItem, NutritionGoal
+from .models import UserProfile, FoodEntry, FoodItem, NutritionGoal, PersonalizedNutritionGoals
 
 class Database:
     def __init__(self):
@@ -18,6 +18,10 @@ class Database:
                 "height": 0, 
                 "weight": 0, 
                 "bmi": None, 
+                "age": 30,
+                "gender": "male",
+                "primary_goal": None,
+                "activity_level": None,
                 "created_at": "2026-04-07T00:00:00", 
                 "updated_at": "2026-04-07T00:00:00"
             },
@@ -28,7 +32,20 @@ class Database:
                 "cholesterol_limit": 300, 
                 "calorie_goal": 2500, 
                 "carb_limit": 300, 
-                "iron_goal": 15
+                "iron_goal": 15,
+                "fat_goal": 70,
+                "fiber_goal": 25,
+                "calcium_goal": 1000,
+                "vitamin_d_goal": 600,
+                "water_goal": 2.5,
+                "explanation": "Default goals - please setup your profile for personalized goals"
+            },
+            "user_goals.json": {
+                "primary_goal": "maintain_weight",
+                "secondary_goals": [],
+                "activity_level": "moderate",
+                "target_weight": None,
+                "weekly_weight_change": 0.5
             },
             "ai_cache.json": {}
         }
@@ -67,12 +84,12 @@ class Database:
         """Save user profile"""
         self._write_json("profile.json", profile.dict())
     
-    def get_nutrition_goals(self) -> NutritionGoal:
-        """Get nutrition goals"""
+    def get_nutrition_goals(self) -> PersonalizedNutritionGoals:
+        """Get personalized nutrition goals"""
         data = self._read_json("nutrition_goals.json")
-        return NutritionGoal(**data)
+        return PersonalizedNutritionGoals(**data)
     
-    def update_nutrition_goals(self, goals: NutritionGoal):
+    def update_nutrition_goals(self, goals: PersonalizedNutritionGoals):
         """Update nutrition goals"""
         self._write_json("nutrition_goals.json", goals.dict())
     
