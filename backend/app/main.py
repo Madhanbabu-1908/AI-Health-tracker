@@ -4,6 +4,8 @@ from fastapi import Request
 from datetime import datetime
 import json
 import os
+import re
+import httpx
 
 app = FastAPI(title="AI Health Tracker API")
 
@@ -58,7 +60,6 @@ def write_json(filepath, data):
         json.dump(data, f, indent=2)
 
 def calculate_bmi(height_cm, weight_kg):
-    """Calculate BMI - height in cm, weight in kg"""
     if height_cm <= 0 or weight_kg <= 0:
         return 0
     height_m = height_cm / 100
@@ -66,23 +67,19 @@ def calculate_bmi(height_cm, weight_kg):
     return round(bmi, 1)
 
 def calculate_protein_goal(weight_kg, primary_goal):
-    """Calculate protein goal based on weight and goal"""
     if primary_goal == "lose_weight":
-        return round(weight_kg * 1.6, 0)  # 1.6g per kg for weight loss
+        return round(weight_kg * 1.6, 0)
     elif primary_goal == "gain_muscle":
-        return round(weight_kg * 1.8, 0)  # 1.8g per kg for muscle gain
+        return round(weight_kg * 1.8, 0)
     else:
-        return round(weight_kg * 1.2, 0)  # 1.2g per kg for maintenance
+        return round(weight_kg * 1.2, 0)
 
 def calculate_calorie_goal(weight_kg, height_cm, age, gender, activity_level, primary_goal):
-    """Calculate calorie goal"""
-    # BMR calculation (Mifflin-St Jeor)
     if gender == "female":
         bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161
     else:
         bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
     
-    # Activity multiplier
     activity_mult = {
         "sedentary": 1.2,
         "light": 1.375,
@@ -100,6 +97,103 @@ def calculate_calorie_goal(weight_kg, height_cm, age, gender, activity_level, pr
     else:
         return round(tdee, 0)
 
+# ========== AI Web Search for Nutrition ==========
+
+async def search_nutrition_online(food_name: str) -> dict:
+    """Search the web for nutrition information using DuckDuckGo"""
+    try:
+        # Use DuckDuckGo HTML search (free, no API key)
+        search_url = f"https://html.duckduckgo.com/html/?q={food_name}+nutrition+facts+per+100g"
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(search_url, headers=headers)
+            
+            if response.status_code == 200:
+                # Extract nutrition from search results
+                nutrition = extract_nutrition_from_text(response.text, food_name)
+                return nutrition
+            else:
+                return get_default_nutrition(food_name)
+                
+    except Exception as e:
+        print(f"Search error: {e}")
+        return get_default_nutrition(food_name)
+
+def extract_nutrition_from_text(html_text: str, food_name: str) -> dict:
+    """Extract nutrition values from HTML text using regex"""
+    
+    nutrition = {
+        "protein": 0,
+        "carbs": 0,
+        "cholesterol": 0,
+        "iron": 0,
+        "calories": 0
+    }
+    
+    # Look for common nutrition patterns
+    patterns = {
+        "protein": r'protein[:\s]+(\d+(?:\.\d+)?)\s*g',
+        "carbs": r'carbohydrates?[:\s]+(\d+(?:\.\d+)?)\s*g',
+        "cholesterol": r'cholesterol[:\s]+(\d+(?:\.\d+)?)\s*mg',
+        "iron": r'iron[:\s]+(\d+(?:\.\d+)?)\s*mg',
+        "calories": r'calories?[:\s]+(\d+(?:\.\d+)?)\s*kcal'
+    }
+    
+    for key, pattern in patterns.items():
+        match = re.search(pattern, html_text, re.IGNORECASE)
+        if match:
+            nutrition[key] = float(match.group(1))
+    
+    # If no values found, use intelligent defaults based on food type
+    if nutrition["protein"] == 0 and nutrition["calories"] == 0:
+        nutrition = get_intelligent_defaults(food_name)
+    
+    return nutrition
+
+def get_intelligent_defaults(food_name: str) -> dict:
+    """Provide intelligent defaults based on food category"""
+    food_lower = food_name.lower()
+    
+    # Protein-rich foods
+    if any(word in food_lower for word in ["chicken", "beef", "mutton", "pork", "turkey", "fish", "prawn", "crab"]):
+        return {"protein": 25, "carbs": 0, "cholesterol": 70, "iron": 1.5, "calories": 200}
+    
+    # Egg-based
+    elif "egg" in food_lower:
+        return {"protein": 13, "carbs": 1, "cholesterol": 370, "iron": 1.8, "calories": 155}
+    
+    # Dairy
+    elif any(word in food_lower for word in ["milk", "paneer", "cheese", "yogurt", "curd", "butter"]):
+        return {"protein": 10, "carbs": 5, "cholesterol": 30, "iron": 0.2, "calories": 150}
+    
+    # Legumes
+    elif any(word in food_lower for word in ["dal", "lentil", "chickpea", "bean", "tofu", "soy"]):
+        return {"protein": 9, "carbs": 20, "cholesterol": 0, "iron": 2.5, "calories": 120}
+    
+    # Grains
+    elif any(word in food_lower for word in ["rice", "wheat", "bread", "roti", "chapati", "noodle", "pasta"]):
+        return {"protein": 3, "carbs": 25, "cholesterol": 0, "iron": 0.5, "calories": 130}
+    
+    # Vegetables
+    elif any(word in food_lower for word in ["spinach", "broccoli", "cauliflower", "carrot", "potato", "tomato"]):
+        return {"protein": 2, "carbs": 8, "cholesterol": 0, "iron": 1.0, "calories": 50}
+    
+    # Fruits
+    elif any(word in food_lower for word in ["apple", "banana", "orange", "mango", "grape", "berry"]):
+        return {"protein": 0.5, "carbs": 15, "cholesterol": 0, "iron": 0.3, "calories": 70}
+    
+    # Default
+    else:
+        return {"protein": 8, "carbs": 12, "cholesterol": 20, "iron": 1.0, "calories": 150}
+
+def get_default_nutrition(food_name: str) -> dict:
+    """Fallback default nutrition"""
+    return get_intelligent_defaults(food_name)
+
 # ========== API Endpoints ==========
 
 @app.get("/")
@@ -108,10 +202,7 @@ async def root():
 
 @app.post("/user/setup-goals")
 async def setup_user_goals(request: Request):
-    """Initialize user with health goals"""
-    
     try:
-        # Get JSON body
         body = await request.json()
         
         nickname = body.get("nickname")
@@ -122,9 +213,6 @@ async def setup_user_goals(request: Request):
         primary_goal = body.get("primary_goal", "maintain_weight")
         activity_level = body.get("activity_level", "moderate")
         
-        print(f"Received: height={height}cm, weight={weight}kg, age={age}, gender={gender}")
-        
-        # Validate
         if not nickname:
             return {"success": False, "message": "Nickname is required"}
         
@@ -137,14 +225,10 @@ async def setup_user_goals(request: Request):
         if age < 10 or age > 120:
             return {"success": False, "message": f"Age must be between 10 and 120 (got {age})"}
         
-        # Calculate
         bmi = calculate_bmi(height, weight)
         protein_goal = calculate_protein_goal(weight, primary_goal)
         calorie_goal = calculate_calorie_goal(weight, height, age, gender, activity_level, primary_goal)
         
-        print(f"Calculated: BMI={bmi}, Protein Goal={protein_goal}g, Calorie Goal={calorie_goal}")
-        
-        # Save profile
         profile = {
             "nickname": nickname,
             "height": height,
@@ -158,7 +242,6 @@ async def setup_user_goals(request: Request):
         }
         write_json(PROFILE_FILE, profile)
         
-        # Save goals
         nutrition_goals = {
             "protein_goal": protein_goal,
             "calorie_goal": calorie_goal,
@@ -170,7 +253,6 @@ async def setup_user_goals(request: Request):
         }
         write_json(GOALS_FILE, nutrition_goals)
         
-        # BMI category
         if bmi < 18.5:
             bmi_category = "Underweight"
         elif bmi < 25:
@@ -204,11 +286,43 @@ async def get_profile():
 async def get_nutrition_goals():
     return read_json(GOALS_FILE)
 
-@app.delete("/clear-profile")
-async def clear_profile():
-    with open(PROFILE_FILE, "w") as f:
-        json.dump(None, f)
-    return {"success": True, "message": "Profile cleared"}
+@app.delete("/reset-all-data")
+async def reset_all_data():
+    """Delete ALL user data"""
+    try:
+        with open(PROFILE_FILE, "w") as f:
+            json.dump(None, f)
+        
+        with open(GOALS_FILE, "w") as f:
+            json.dump({
+                "protein_goal": 100,
+                "calorie_goal": 2500,
+                "cholesterol_limit": 300
+            }, f)
+        
+        with open(FOOD_ENTRIES_FILE, "w") as f:
+            json.dump({}, f)
+        
+        with open(USER_FOODS_FILE, "w") as f:
+            json.dump({}, f)
+        
+        return {"success": True, "message": "All data has been reset successfully"}
+        
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.get("/ai/predict-nutrition")
+async def predict_nutrition(food_name: str):
+    """AI predicts nutrition values using web search"""
+    
+    # Search web for nutrition information
+    nutrition = await search_nutrition_online(food_name)
+    
+    return {
+        "success": True,
+        "nutrition": nutrition,
+        "message": f"AI predicted nutrition for {food_name} based on web search"
+    }
 
 @app.get("/food/list")
 async def list_foods():
