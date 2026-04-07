@@ -15,9 +15,57 @@ export default function AddFood() {
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('')
   const [loading, setLoading] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiPrediction, setAiPrediction] = useState(null)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
+  }
+
+  const fetchAIPrediction = async () => {
+    if (!formData.name.trim()) {
+      setMessageType('error')
+      setMessage('❌ Please enter food name first')
+      setTimeout(() => setMessage(''), 3000)
+      return
+    }
+
+    setAiLoading(true)
+    setAiPrediction(null)
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai/predict-nutrition?food_name=${encodeURIComponent(formData.name)}`, {
+        method: 'GET'
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setAiPrediction(data.nutrition)
+        setFormData(prev => ({
+          ...prev,
+          protein: data.nutrition.protein || '',
+          carbs: data.nutrition.carbs || '',
+          cholesterol: data.nutrition.cholesterol || '',
+          iron: data.nutrition.iron || '',
+          calories: data.nutrition.calories || ''
+        }))
+        setMessageType('success')
+        setMessage(`🤖 AI predicted nutrition for "${formData.name}". You can edit values if needed.`)
+        setTimeout(() => setMessage(''), 4000)
+      } else {
+        setMessageType('error')
+        setMessage(`❌ Could not predict nutrition. Please enter manually.`)
+        setTimeout(() => setMessage(''), 3000)
+      }
+    } catch (error) {
+      console.error('Error fetching AI prediction:', error)
+      setMessageType('error')
+      setMessage('❌ AI prediction failed. Please enter manually.')
+      setTimeout(() => setMessage(''), 3000)
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -70,6 +118,7 @@ export default function AddFood() {
           cost: '',
           unit: 'serving'
         })
+        setAiPrediction(null)
         setTimeout(() => setMessage(''), 3000)
       } else {
         setMessageType('error')
@@ -89,7 +138,7 @@ export default function AddFood() {
   return (
     <div className="add-food">
       <h2>➕ Add Custom Food</h2>
-      <p className="info-text">Add your own foods with their nutrition values. They will appear in your food list for logging.</p>
+      <p className="info-text">Add your own foods with their nutrition values. Try the <strong>🤖 AI Auto-Fill</strong> button!</p>
       
       <form onSubmit={handleSubmit}>
         <div className="form-section">
@@ -97,14 +146,25 @@ export default function AddFood() {
           
           <div className="form-group">
             <label>Food Name *</label>
-            <input 
-              type="text" 
-              name="name" 
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="e.g., Homemade Chicken Curry, Protein Shake"
-              required
-            />
+            <div className="name-input-group">
+              <input 
+                type="text" 
+                name="name" 
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g., Homemade Chicken Curry, Protein Shake"
+                required
+              />
+              <button 
+                type="button" 
+                onClick={fetchAIPrediction} 
+                className="ai-btn"
+                disabled={aiLoading}
+              >
+                {aiLoading ? '🤖 Predicting...' : '🤖 AI Auto-Fill'}
+              </button>
+            </div>
+            <small>Enter food name and click AI Auto-Fill to get nutrition predictions</small>
           </div>
 
           <div className="form-group">
@@ -119,6 +179,16 @@ export default function AddFood() {
             <small>How you measure this food</small>
           </div>
         </div>
+
+        {aiPrediction && (
+          <div className="ai-prediction-banner">
+            <span>🤖</span>
+            <div>
+              <strong>AI Predicted Values</strong>
+              <p>Based on web search for "{formData.name}"</p>
+            </div>
+          </div>
+        )}
 
         <div className="form-section">
           <h3>🥗 Nutrition Information (per serving)</h3>
@@ -215,12 +285,13 @@ export default function AddFood() {
       <div className="tips">
         <h4>💡 Tips:</h4>
         <ul>
-          <li>Check nutritional labels on packaged foods</li>
+          <li>Enter food name and click <strong>🤖 AI Auto-Fill</strong> to automatically get nutrition values</li>
+          <li>You can edit the AI-predicted values before saving</li>
+          <li>Check nutritional labels on packaged foods for accuracy</li>
           <li>For homemade food, sum up ingredients and divide by servings</li>
           <li>Once added, you can log this food from the "Log Food" tab</li>
-          <li>You can add as many foods as you want</li>
         </ul>
       </div>
     </div>
   )
-}
+        }
