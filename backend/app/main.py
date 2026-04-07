@@ -6,9 +6,16 @@ import json
 import os
 import uuid
 import re
-import httpx
 
-app = FastAPI(title="AI Health Tracker API")
+# Import your existing modules
+from .models import UserProfile, FoodEntry, AIRequest, HealthGoal, ActivityLevel, PersonalizedNutritionGoals
+from .database import Database
+from .orchestrator import AgenticOrchestrator
+from .goal_calculator import GoalCalculator
+from .ai_agent import AIHealthAgent
+from .mcp_tools import MCPTools
+
+app = FastAPI(title="AI Health Tracker API with MCP")
 
 # Enable CORS
 app.add_middleware(
@@ -19,46 +26,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Data directory
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
+# Initialize components
+db = Database()
+orchestrator = AgenticOrchestrator()
+ai_agent = AIHealthAgent()
+mcp = MCPTools()
+goal_calculator = GoalCalculator()
 
-PROFILE_FILE = os.path.join(DATA_DIR, "profile.json")
-GOALS_FILE = os.path.join(DATA_DIR, "goals.json")
-FOOD_ENTRIES_FILE = os.path.join(DATA_DIR, "food_entries.json")
-USER_FOODS_FILE = os.path.join(DATA_DIR, "user_foods.json")
-
-# Initialize files
-def init_files():
-    if not os.path.exists(PROFILE_FILE):
-        with open(PROFILE_FILE, "w") as f:
-            json.dump(None, f)
-    
-    if not os.path.exists(GOALS_FILE):
-        with open(GOALS_FILE, "w") as f:
-            json.dump({
-                "protein_goal": 100,
-                "calorie_goal": 2500,
-                "cholesterol_limit": 300
-            }, f)
-    
-    if not os.path.exists(FOOD_ENTRIES_FILE):
-        with open(FOOD_ENTRIES_FILE, "w") as f:
-            json.dump({}, f)
-    
-    if not os.path.exists(USER_FOODS_FILE):
-        with open(USER_FOODS_FILE, "w") as f:
-            json.dump({}, f)
-
-init_files()
-
-def read_json(filepath):
-    with open(filepath, "r") as f:
-        return json.load(f)
-
-def write_json(filepath, data):
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=2)
+# ========== Helper Functions ==========
 
 def calculate_bmi(height_cm, weight_kg):
     if height_cm <= 0 or weight_kg <= 0:
@@ -98,83 +73,11 @@ def calculate_calorie_goal(weight_kg, height_cm, age, gender, activity_level, pr
     else:
         return round(tdee, 0)
 
-# ========== AI Web Search for Nutrition ==========
-
-async def search_nutrition_online(food_name: str) -> dict:
-    """Search the web for nutrition information"""
-    try:
-        search_url = f"https://html.duckduckgo.com/html/?q={food_name}+nutrition+facts+per+100g"
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.get(search_url, headers=headers)
-            
-            if response.status_code == 200:
-                nutrition = extract_nutrition_from_text(response.text, food_name)
-                return nutrition
-            else:
-                return get_intelligent_defaults(food_name)
-                
-    except Exception as e:
-        print(f"Search error: {e}")
-        return get_intelligent_defaults(food_name)
-
-def extract_nutrition_from_text(html_text: str, food_name: str) -> dict:
-    """Extract nutrition values from HTML text"""
-    
-    nutrition = {
-        "protein": 0,
-        "carbs": 0,
-        "cholesterol": 0,
-        "iron": 0,
-        "calories": 0
-    }
-    
-    patterns = {
-        "protein": r'protein[:\s]+(\d+(?:\.\d+)?)\s*g',
-        "carbs": r'carbohydrates?[:\s]+(\d+(?:\.\d+)?)\s*g',
-        "cholesterol": r'cholesterol[:\s]+(\d+(?:\.\d+)?)\s*mg',
-        "iron": r'iron[:\s]+(\d+(?:\.\d+)?)\s*mg',
-        "calories": r'calories?[:\s]+(\d+(?:\.\d+)?)\s*kcal'
-    }
-    
-    for key, pattern in patterns.items():
-        match = re.search(pattern, html_text, re.IGNORECASE)
-        if match:
-            nutrition[key] = float(match.group(1))
-    
-    if nutrition["protein"] == 0 and nutrition["calories"] == 0:
-        nutrition = get_intelligent_defaults(food_name)
-    
-    return nutrition
-
-def get_intelligent_defaults(food_name: str) -> dict:
-    """Provide intelligent defaults based on food category"""
-    food_lower = food_name.lower()
-    
-    if any(word in food_lower for word in ["chicken", "beef", "mutton", "fish", "prawn"]):
-        return {"protein": 25, "carbs": 0, "cholesterol": 70, "iron": 1.5, "calories": 200}
-    elif "egg" in food_lower:
-        return {"protein": 13, "carbs": 1, "cholesterol": 370, "iron": 1.8, "calories": 155}
-    elif any(word in food_lower for word in ["milk", "paneer", "cheese", "yogurt"]):
-        return {"protein": 10, "carbs": 5, "cholesterol": 30, "iron": 0.2, "calories": 150}
-    elif any(word in food_lower for word in ["dal", "lentil", "chickpea", "bean", "tofu"]):
-        return {"protein": 9, "carbs": 20, "cholesterol": 0, "iron": 2.5, "calories": 120}
-    elif any(word in food_lower for word in ["rice", "bread", "roti", "chapati", "noodle"]):
-        return {"protein": 3, "carbs": 25, "cholesterol": 0, "iron": 0.5, "calories": 130}
-    elif any(word in food_lower for word in ["biryani", "curry", "masala"]):
-        return {"protein": 12, "carbs": 30, "cholesterol": 40, "iron": 1.2, "calories": 250}
-    else:
-        return {"protein": 8, "carbs": 12, "cholesterol": 20, "iron": 1.0, "calories": 150}
-
 # ========== API Endpoints ==========
 
 @app.get("/")
 async def root():
-    return {"message": "AI Health Tracker API", "status": "active", "version": "3.0"}
+    return {"message": "AI Health Tracker API with MCP", "status": "active", "version": "3.0"}
 
 @app.post("/user/setup-goals")
 async def setup_user_goals(request: Request):
@@ -192,12 +95,6 @@ async def setup_user_goals(request: Request):
         if not nickname:
             return {"success": False, "message": "Nickname is required"}
         
-        if height < 50 or height > 250:
-            return {"success": False, "message": f"Height must be between 50cm and 250cm"}
-        
-        if weight < 20 or weight > 300:
-            return {"success": False, "message": f"Weight must be between 20kg and 300kg"}
-        
         bmi = calculate_bmi(height, weight)
         protein_goal = calculate_protein_goal(weight, primary_goal)
         calorie_goal = calculate_calorie_goal(weight, height, age, gender, activity_level, primary_goal)
@@ -213,7 +110,9 @@ async def setup_user_goals(request: Request):
             "activity_level": activity_level,
             "created_at": datetime.now().isoformat()
         }
-        write_json(PROFILE_FILE, profile)
+        
+        # Save using database
+        db.save_profile(UserProfile(**profile))
         
         nutrition_goals = {
             "protein_goal": protein_goal,
@@ -221,10 +120,9 @@ async def setup_user_goals(request: Request):
             "cholesterol_limit": 300,
             "carb_goal": round(weight * 4, 0),
             "fat_goal": round(weight * 0.8, 0),
-            "iron_goal": 15,
-            "explanation": f"Based on your {primary_goal.replace('_', ' ')} goal"
+            "iron_goal": 15
         }
-        write_json(GOALS_FILE, nutrition_goals)
+        db.update_nutrition_goals(PersonalizedNutritionGoals(**nutrition_goals))
         
         if bmi < 18.5:
             bmi_category = "Underweight"
@@ -250,52 +148,42 @@ async def setup_user_goals(request: Request):
 
 @app.get("/profile")
 async def get_profile():
-    profile = read_json(PROFILE_FILE)
+    profile = db.get_profile()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return profile
+    return profile.dict()
 
 @app.get("/nutrition-goals")
 async def get_nutrition_goals():
-    return read_json(GOALS_FILE)
+    goals = db.get_nutrition_goals()
+    return goals.dict()
 
 @app.delete("/reset-all-data")
 async def reset_all_data():
+    """Delete ALL user data using database methods"""
     try:
-        with open(PROFILE_FILE, "w") as f:
-            json.dump(None, f)
-        
-        with open(GOALS_FILE, "w") as f:
-            json.dump({
-                "protein_goal": 100,
-                "calorie_goal": 2500,
-                "cholesterol_limit": 300
-            }, f)
-        
-        with open(FOOD_ENTRIES_FILE, "w") as f:
-            json.dump({}, f)
-        
-        with open(USER_FOODS_FILE, "w") as f:
-            json.dump({}, f)
-        
+        # Clear using database methods
+        db.save_profile(None)
+        db.update_nutrition_goals(PersonalizedNutritionGoals(
+            protein_goal=100, calorie_goal=2500, cholesterol_limit=300,
+            carb_goal=250, fat_goal=60, iron_goal=15, fiber_goal=25,
+            water_goal=2.5, calcium_goal=1000, vitamin_d_goal=600,
+            explanation="Default goals"
+        ))
         return {"success": True, "message": "All data reset successfully"}
-        
     except Exception as e:
         return {"success": False, "message": str(e)}
 
 @app.get("/ai/predict-nutrition")
 async def predict_nutrition(food_name: str):
-    nutrition = await search_nutrition_online(food_name)
-    return {
-        "success": True,
-        "nutrition": nutrition,
-        "message": f"AI predicted nutrition for {food_name}"
-    }
+    """Use MCP tools to search for nutrition info"""
+    result = await mcp.get_nutrition_from_api(food_name)
+    return {"success": True, "nutrition": result}
 
 @app.get("/food/list")
 async def list_foods():
-    foods = read_json(USER_FOODS_FILE)
-    return {"foods": list(foods.values())}
+    foods = db.get_food_items()
+    return {"foods": [f.dict() for f in foods]}
 
 @app.post("/food/add")
 async def add_food(
@@ -308,135 +196,104 @@ async def add_food(
     calories: float = 0,
     unit: str = "serving"
 ):
-    foods = read_json(USER_FOODS_FILE)
-    
+    from .models import FoodItem
     food_id = str(uuid.uuid4())[:8]
-    new_food = {
-        "id": food_id,
-        "name": name,
-        "protein_per_unit": protein,
-        "carbs_per_unit": carbs,
-        "cholesterol_per_unit": cholesterol,
-        "iron_per_unit": iron,
-        "calories_per_unit": calories,
-        "cost": cost,
-        "default_unit": unit,
-        "usage_count": 0
-    }
-    
-    foods[food_id] = new_food
-    write_json(USER_FOODS_FILE, foods)
-    return {"success": True, "food": new_food, "message": f"Added {name}"}
+    new_food = FoodItem(
+        id=food_id,
+        name=name,
+        protein_per_unit=protein,
+        carbs_per_unit=carbs,
+        cholesterol_per_unit=cholesterol,
+        iron_per_unit=iron,
+        calories_per_unit=calories,
+        cost=cost,
+        default_unit=unit
+    )
+    db.add_food_item(new_food)
+    return {"success": True, "food": new_food.dict(), "message": f"Added {name}"}
 
 @app.post("/food/log")
 async def log_food(name: str, quantity: float = 1.0):
-    foods = read_json(USER_FOODS_FILE)
+    from .models import FoodEntry
+    foods = db.get_food_items()
     
     food_item = None
-    for item in foods.values():
-        if item["name"].lower() == name.lower():
+    for item in foods:
+        if item.name.lower() == name.lower():
             food_item = item
             break
     
     if not food_item:
         raise HTTPException(status_code=404, detail=f"Food '{name}' not found")
     
-    entry = {
-        "name": food_item["name"],
-        "protein": food_item["protein_per_unit"] * quantity,
-        "carbs": food_item["carbs_per_unit"] * quantity,
-        "cholesterol": food_item["cholesterol_per_unit"] * quantity,
-        "iron": food_item["iron_per_unit"] * quantity,
-        "calories": food_item["calories_per_unit"] * quantity,
-        "cost": food_item["cost"] * quantity,
-        "quantity": quantity,
-        "timestamp": datetime.now().isoformat()
-    }
+    entry = FoodEntry(
+        id=str(uuid.uuid4())[:8],
+        name=food_item.name,
+        protein=food_item.protein_per_unit * quantity,
+        carbs=food_item.carbs_per_unit * quantity,
+        cholesterol=food_item.cholesterol_per_unit * quantity,
+        iron=food_item.iron_per_unit * quantity,
+        calories=food_item.calories_per_unit * quantity,
+        cost=food_item.cost * quantity,
+        quantity=quantity,
+        unit=food_item.default_unit
+    )
+    db.add_food_entry(entry)
     
-    entries = read_json(FOOD_ENTRIES_FILE)
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    if today not in entries:
-        entries[today] = []
-    
-    entries[today].append(entry)
-    write_json(FOOD_ENTRIES_FILE, entries)
-    
-    return {"success": True, "message": f"Logged {quantity} × {food_item['name']}"}
+    return {"success": True, "message": f"Logged {quantity} × {food_item.name}"}
 
 @app.get("/today")
 async def get_today():
-    entries = read_json(FOOD_ENTRIES_FILE)
-    today = datetime.now().strftime("%Y-%m-%d")
-    goals = read_json(GOALS_FILE)
-    
-    totals = {"protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0}
-    
-    if today in entries:
-        for entry in entries[today]:
-            totals["protein"] += entry.get("protein", 0)
-            totals["carbs"] += entry.get("carbs", 0)
-            totals["cholesterol"] += entry.get("cholesterol", 0)
-            totals["iron"] += entry.get("iron", 0)
-            totals["calories"] += entry.get("calories", 0)
-            totals["cost"] += entry.get("cost", 0)
+    totals = db.get_today_totals()
+    goals = db.get_nutrition_goals()
     
     return {
         "totals": totals,
         "percentages": {
-            "protein": round((totals["protein"] / goals.get("protein_goal", 100)) * 100, 1) if goals.get("protein_goal", 100) > 0 else 0,
-            "calories": round((totals["calories"] / goals.get("calorie_goal", 2500)) * 100, 1) if goals.get("calorie_goal", 2500) > 0 else 0,
-            "cholesterol": round((totals["cholesterol"] / goals.get("cholesterol_limit", 300)) * 100, 1) if goals.get("cholesterol_limit", 300) > 0 else 0
+            "protein": round((totals["protein"] / goals.protein_goal) * 100, 1) if goals.protein_goal > 0 else 0,
+            "calories": round((totals["calories"] / goals.calorie_goal) * 100, 1) if goals.calorie_goal > 0 else 0,
+            "cholesterol": round((totals["cholesterol"] / goals.cholesterol_limit) * 100, 1) if goals.cholesterol_limit > 0 else 0
         }
     }
 
 @app.get("/history")
 async def get_history(days: int = 7):
-    entries = read_json(FOOD_ENTRIES_FILE)
+    entries = db.get_last_n_days_entries(days)
     result = []
     
-    end_date = datetime.now()
-    
-    for i in range(days):
-        date = (end_date - timedelta(days=i)).strftime("%Y-%m-%d")
-        if date in entries:
-            day_total = {"date": date, "protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0}
-            for entry in entries[date]:
-                day_total["protein"] += entry.get("protein", 0)
-                day_total["carbs"] += entry.get("carbs", 0)
-                day_total["cholesterol"] += entry.get("cholesterol", 0)
-                day_total["iron"] += entry.get("iron", 0)
-                day_total["calories"] += entry.get("calories", 0)
-                day_total["cost"] += entry.get("cost", 0)
-            result.append(day_total)
-        else:
-            result.append({"date": date, "protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0})
+    for date, daily_entries in entries.items():
+        day_total = {"date": date, "protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0}
+        for entry in daily_entries:
+            day_total["protein"] += entry.get("protein", 0)
+            day_total["carbs"] += entry.get("carbs", 0)
+            day_total["cholesterol"] += entry.get("cholesterol", 0)
+            day_total["iron"] += entry.get("iron", 0)
+            day_total["calories"] += entry.get("calories", 0)
+            day_total["cost"] += entry.get("cost", 0)
+        result.append(day_total)
     
     return result
 
 @app.post("/ai/chat")
 async def ai_chat(request: dict):
-    query = request.get("query", "").lower()
-    context = request.get("context", {})
-    profile = context.get("profile", {})
-    goals = context.get("goals", {})
+    """AI chat using orchestrator with MCP tools"""
+    query = request.get("query", "")
     
-    protein_goal = goals.get("protein_goal", 72)
+    # Get context
+    profile = db.get_profile()
+    goals = db.get_nutrition_goals()
+    today_totals = db.get_today_totals()
     
-    if "protein" in query:
-        response = f"Your daily protein goal is {protein_goal}g. Great sources include chicken (31g/100g), eggs (13g/egg), and lentils (9g/100g)."
-    elif "iron" in query:
-        response = "Iron-rich foods: Spinach (6mg/cup), Lentils (3mg/cup), Beef (2.5mg/100g). Pair with Vitamin C for better absorption!"
-    elif "cholesterol" in query:
-        response = "To lower cholesterol: Eat more oats, nuts, and plant-based proteins. Limit saturated fats from red meat and fried foods."
-    elif "meal" in query or "eat" in query:
-        response = f"High protein meal suggestion: Grilled chicken (31g protein) with chickpeas (15g) and quinoa (8g) = 54g total protein!"
-    elif "track" in query or "progress" in query:
-        response = "You're doing great! Keep logging your meals daily to see your progress. Consistency is key!"
-    else:
-        response = f"Hi {profile.get('nickname', 'there')}! I'm your AI health coach. Your daily protein goal is {protein_goal}g. Ask me about protein, iron, cholesterol, or meal ideas!"
+    context = {
+        "profile": profile.dict() if profile else {},
+        "goals": goals.dict(),
+        "today": today_totals
+    }
     
-    return {"response": response}
+    # Use orchestrator to process query (this uses ai_agent and mcp_tools)
+    result = await orchestrator.process_ai_query(query, context)
+    
+    return {"response": result.get("response", "I'm here to help!")}
 
 if __name__ == "__main__":
     import uvicorn
