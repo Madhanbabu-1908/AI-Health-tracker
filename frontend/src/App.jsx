@@ -14,6 +14,7 @@ function App() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showReset, setShowReset] = useState(false)
   
   const [formData, setFormData] = useState({
     nickname: '',
@@ -60,6 +61,7 @@ function App() {
         const data = await response.json()
         console.log('Profile found:', data)
         setProfile(data)
+        setShowReset(true)
         
         try {
           const goalsResponse = await fetch(`${API_BASE_URL}/nutrition-goals`)
@@ -75,6 +77,7 @@ function App() {
       } else if (response.status === 404) {
         console.log('No profile found - showing onboarding')
         setProfileInitialized(false)
+        setShowReset(false)
       } else {
         setError(`Server error: ${response.status}`)
       }
@@ -83,6 +86,26 @@ function App() {
       setError(`Cannot connect to backend. Make sure backend is running at ${API_BASE_URL}`)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const resetProfile = async () => {
+    if (confirm('Are you sure you want to reset your profile? All your food data will be lost.')) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/clear-profile`, { method: 'DELETE' })
+        if (response.ok) {
+          setProfile(null)
+          setNutritionGoals(null)
+          setProfileInitialized(false)
+          setShowReset(false)
+          window.location.reload()
+        } else {
+          alert('Failed to reset profile. Please try again.')
+        }
+      } catch (error) {
+        console.error('Error resetting profile:', error)
+        alert('Error resetting profile. Please check backend connection.')
+      }
     }
   }
 
@@ -149,6 +172,7 @@ function App() {
         setProfile(data.profile)
         setNutritionGoals(data.nutrition_goals)
         setProfileInitialized(true)
+        setShowReset(false)
       } else {
         setError(data.message || 'Failed to create profile')
       }
@@ -364,6 +388,17 @@ function App() {
         <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>📈 History</button>
         <button className={activeTab === 'ai' ? 'active' : ''} onClick={() => setActiveTab('ai')}>🤖 AI Coach</button>
       </div>
+
+      {showReset && (
+        <div style={{ padding: '10px 20px', textAlign: 'center' }}>
+          <button 
+            onClick={resetProfile}
+            style={{ padding: '8px 16px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+          >
+            Reset Profile (Clear Test Data)
+          </button>
+        </div>
+      )}
 
       <div className="content">
         {activeTab === 'dashboard' && <Dashboard profile={profile} nutritionGoals={safeNutritionGoals} />}
