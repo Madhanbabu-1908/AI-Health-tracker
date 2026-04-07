@@ -1,14 +1,17 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .models import UserProfile, FoodEntry, AIRequest, DateRange, NutritionGoal
+from .models import UserProfile, FoodEntry, AIRequest, HealthGoal, ActivityLevel, PersonalizedNutritionGoals
 from .database import Database
 from .orchestrator import AgenticOrchestrator
+from .goal_calculator import GoalCalculator
+from .models import UserGoals
 from datetime import datetime
 import uuid
 
-app = FastAPI(title="AI Health Tracker API")
+app = FastAPI(title="Madhan Health Tracker API")
 orchestrator = AgenticOrchestrator()
 db = Database()
+goal_calculator = GoalCalculator()
 
 # Enable CORS for frontend and mobile app
 app.add_middleware(
@@ -19,54 +22,183 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health check
+# ========== Health Check ==========
+
 @app.get("/")
 async def root():
-    return {"message": "AI Health Tracker API", "status": "active", "version": "3.0"}
+    return {"message": "Madhan Health Tracker API", "status": "active", "version": "3.0"}
 
-# Profile Management
-@app.post("/profile/init")
-async def init_profile(nickname: str, height: float, weight: float):
-    """Initialize user profile with nickname, height, weight, and calculate BMI"""
+# ========== User Profile & Goals ==========
+
+@app.post("/user/setup-goals")
+async def setup_user_goals(
+    nickname: str,
+    height: float,
+    weight: float,
+    age: int,
+    gender: str,
+    primary_goal: HealthGoal,
+    activity_level: ActivityLevel,
+    secondary_goals: str = "",
+    target_weight: float = None,
+    weekly_weight_change: float = 0.5
+):
+    """Initialize user with health goals and get personalized nutrition targets"""
+    
+    # Parse secondary goals
+    secondary_list = []
+    if secondary_goals:
+        for goal in secondary_goals.split(","):
+            try:
+                secondary_list.append(HealthGoal(goal.strip()))
+            except ValueError:
+                pass
+    
+    # Create user goals object
+    user_goals = UserGoals(
+        primary_goal=primary_goal,
+        secondary_goals=secondary_list,
+        activity_level=activity_level,
+        target_weight=target_weight,
+        weekly_weight_change=weekly_weight_change if primary_goal in [HealthGoal.LOSE_WEIGHT, HealthGoal.GAIN_MUSCLE] else 0
+    )
+    
+    # Calculate personalized nutrition goals
+    nutrition_goals = GoalCalculator.calculate_nutrition_goals(
+        weight_kg=weight,
+        height_cm=height,
+        age=age,
+        gender=gender,
+        user_goals=user_goals
+    )
+    
+    # Calculate BMI
     bmi = weight / ((height / 100) ** 2)
+    
+    # Save profile
     profile = UserProfile(
         nickname=nickname,
         height=height,
         weight=weight,
-        bmi=bmi
+        bmi=bmi,
+        age=age,
+        gender=gender,
+        primary_goal=primary_goal.value,
+        activity_level=activity_level.value
     )
     db.save_profile(profile)
-    return {"success": True, "profile": profile.dict(), "bmi": bmi}
+    
+    # Save nutrition goals
+    db.update_nutrition_goals(nutrition_goals)
+    
+    # Save user goals separately
+    db._write_json("user_goals.json", user_goals.dict())
+    
+    # Get BMI category
+    bmi_category = "Normal weight"
+    if bmi < 18.5:
+        bmi_category = "Underweight"
+    elif bmi < 25:
+        bmi_category = "Normal weight"
+    elif bmi < 30:
+        bmi_category = "Overweight"
+    else:
+        bmi_category = "Obese"
+    
+    return {
+        "success": True,
+        "profile": profile.dict(),
+        "nutrition_goals": nutrition_goals.dict(),
+        "bmi": round(bmi, 1),
+        "bmi_category": bmi_category,
+        "message": nutrition_goals.explanation
+    }
 
 @app.get("/profile")
 async def get_profile():
+    """Get user profile"""
     profile = db.get_profile()
     if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found. Please initialize first.")
+        raise HTTPException(status_code=404, detail="Profile not found. Please setup goals first.")
     return profile.dict()
 
 @app.get("/nutrition-goals")
 async def get_nutrition_goals():
-    return db.get_nutrition_goals().dict()
+    """Get personalized nutrition goals"""
+    goals = db.get_nutrition_goals()
+    return goals.dict()
 
 @app.post("/nutrition-goals")
-async def update_nutrition_goals(goals: NutritionGoal):
+async def update_nutrition_goals(goals: PersonalizedNutritionGoals):
+    """Update nutrition goals manually"""
     db.update_nutrition_goals(goals)
     return {"success": True}
 
-# Food Management
+@app.get("/user/goals")
+async def get_user_goals():
+    """Get current user goals and nutrition targets"""
+    profile = db.get_profile()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    nutrition_goals = db.get_nutrition_goals()
+    user_goals = db._read_json("user_goals.json")
+    
+    return {
+        "profile": profile.dict(),
+        "nutrition_goals": nutrition_goals.dict(),
+        "health_goals": user_goals
+    }
+
+@app.post("/user/update-goals")
+async def update_user_goals(
+    primary_goal: HealthGoal = None,
+    activity_level: ActivityLevel = None,
+    target_weight: float = None
+):
+    """Update user goals and recalculate nutrition targets"""
+    profile = db.get_profile()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    user_goals_data = db._read_json("user_goals.json")
+    user_goals = UserGoals(**user_goals_data)
+    
+    # Update goals if provided
+    if primary_goal:
+        user_goals.primary_goal = primary_goal
+    if activity_level:
+        user_goals.activity_level = activity_level
+    if target_weight:
+        user_goals.target_weight = target_weight
+    
+    # Recalculate nutrition goals
+    nutrition_goals = GoalCalculator.calculate_nutrition_goals(
+        weight_kg=profile.weight,
+        height_cm=profile.height,
+        age=profile.age,
+        gender=profile.gender,
+        user_goals=user_goals
+    )
+    
+    # Save updated goals
+    db.update_nutrition_goals(nutrition_goals)
+    db._write_json("user_goals.json", user_goals.dict())
+    
+    return {
+        "success": True,
+        "nutrition_goals": nutrition_goals.dict(),
+        "health_goals": user_goals.dict(),
+        "message": nutrition_goals.explanation
+    }
+
+# ========== Food Management ==========
+
 @app.post("/food/add")
 async def add_food(name: str, cost: float, unit: str = "serving"):
     """Add new food with AI-predicted nutrition"""
     result = await orchestrator.add_new_food(name, cost, unit)
     return result
-
-@app.get("/food/search")
-async def search_food(query: str):
-    """Search for food in database"""
-    foods = db.get_food_items()
-    results = [f for f in foods if query.lower() in f.name.lower()]
-    return {"results": [f.dict() for f in results], "count": len(results)}
 
 @app.get("/food/list")
 async def list_foods():
@@ -82,17 +214,29 @@ async def log_food(name: str, quantity: float = 1.0, unit: str = "serving", cost
         raise HTTPException(status_code=404, detail=result["error"])
     return result
 
-# Analytics and Reports
+@app.get("/today")
+async def get_today():
+    """Get today's totals"""
+    totals = db.get_today_totals()
+    goals = db.get_nutrition_goals()
+    
+    # Calculate percentages
+    return {
+        "totals": totals,
+        "percentages": {
+            "protein": round((totals["protein"] / goals.protein_goal) * 100, 1) if goals.protein_goal > 0 else 0,
+            "calories": round((totals["calories"] / goals.calorie_goal) * 100, 1) if goals.calorie_goal > 0 else 0,
+            "cholesterol": round((totals["cholesterol"] / goals.cholesterol_limit) * 100, 1) if goals.cholesterol_limit > 0 else 0,
+            "iron": round((totals["iron"] / goals.iron_goal) * 100, 1) if goals.iron_goal > 0 else 0
+        }
+    }
+
+# ========== Analytics ==========
+
 @app.get("/nutrition/analysis")
 async def get_nutrition_analysis(date_range: str = "week"):
     """Get nutrition analysis for date range (week, weeks, weeks3, month)"""
     return await orchestrator.get_nutrition_analysis(date_range)
-
-@app.get("/entries/range")
-async def get_entries_by_range(start_date: str, end_date: str):
-    """Get food entries for date range"""
-    entries = db.get_entries_by_date_range(start_date, end_date)
-    return entries
 
 @app.post("/report/generate")
 async def generate_report(start_date: str, end_date: str):
@@ -100,28 +244,17 @@ async def generate_report(start_date: str, end_date: str):
     result = await orchestrator.generate_report(start_date, end_date)
     return result
 
-# AI Features
+# ========== AI Features ==========
+
 @app.post("/ai/chat")
 async def ai_chat(request: AIRequest):
-    """AI chat with caching and personal info filtering"""
+    """AI chat with personalized context"""
     profile = db.get_profile()
     if not profile:
-        raise HTTPException(status_code=400, detail="Please initialize profile first")
+        raise HTTPException(status_code=400, detail="Please setup your goals first")
     
     goals = db.get_nutrition_goals()
-    today_entries = db.get_entries_by_date_range(
-        datetime.now().strftime("%Y-%m-%d"),
-        datetime.now().strftime("%Y-%m-%d")
-    )
-    
-    today_totals = {"protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0}
-    for entries in today_entries.values():
-        for entry in entries:
-            today_totals["protein"] += entry.get("protein", 0)
-            today_totals["carbs"] += entry.get("carbs", 0)
-            today_totals["cholesterol"] += entry.get("cholesterol", 0)
-            today_totals["iron"] += entry.get("iron", 0)
-            today_totals["calories"] += entry.get("calories", 0)
+    today_totals = db.get_today_totals()
     
     context = {
         "profile": profile.dict(),
@@ -131,30 +264,12 @@ async def ai_chat(request: AIRequest):
     
     result = await orchestrator.process_ai_query(request.query, context)
     return result
-    
+
 @app.get("/ai/token-usage")
 async def get_token_usage():
     """Get current token usage across all AI models"""
     usage = orchestrator.ai_agent.get_token_usage_summary()
     return usage
-
-@app.get("/today")
-async def get_today():
-    """Get today's totals"""
-    today = datetime.now().strftime("%Y-%m-%d")
-    entries = db.get_entries_by_date_range(today, today)
-    
-    totals = {"protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0}
-    for daily_entries in entries.values():
-        for entry in daily_entries:
-            totals["protein"] += entry.get("protein", 0)
-            totals["carbs"] += entry.get("carbs", 0)
-            totals["cholesterol"] += entry.get("cholesterol", 0)
-            totals["iron"] += entry.get("iron", 0)
-            totals["calories"] += entry.get("calories", 0)
-            totals["cost"] += entry.get("cost", 0)
-    
-    return totals
 
 if __name__ == "__main__":
     import uvicorn
