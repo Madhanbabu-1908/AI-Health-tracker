@@ -46,9 +46,20 @@ class MCPTools:
         return {"sentiment": sentiment, "score": score}
     
     @staticmethod
-    async def get_nutrition_from_api(food_name: str) -> Dict:
-        """Get nutrition information from web"""
+async def get_nutrition_from_api(food_name: str) -> Dict:
+    """Get nutrition information from web"""
+    try:
         results = await MCPTools.web_search(f"{food_name} nutrition per 100g", 2)
+        
+        # Handle case when results is None
+        if not results:
+            return {
+                "protein": 0,
+                "carbs": 0,
+                "cholesterol": 0,
+                "iron": 0,
+                "calories": 0
+            }
         
         # Extract nutrition info from search results (simplified)
         nutrition = {
@@ -60,17 +71,20 @@ class MCPTools:
         }
         
         for result in results:
-            snippet = result["snippet"].lower()
-            if "protein" in snippet:
-                # Try to extract numbers (simplified extraction)
-                import re
-                protein_match = re.search(r'protein\s*(\d+(?:\.\d+)?)\s*g', snippet)
-                if protein_match:
-                    nutrition["protein"] = float(protein_match.group(1))
-            
-            if "calories" in snippet:
-                cal_match = re.search(r'calories?\s*(\d+)', snippet)
-                if cal_match:
-                    nutrition["calories"] = float(cal_match.group(1))
+            if result and "snippet" in result:
+                snippet = result["snippet"].lower()
+                if "protein" in snippet:
+                    import re
+                    protein_match = re.search(r'protein\s*(\d+(?:\.\d+)?)\s*g', snippet)
+                    if protein_match:
+                        nutrition["protein"] = float(protein_match.group(1))
+                
+                if "calories" in snippet:
+                    cal_match = re.search(r'calories?\s*(\d+)', snippet)
+                    if cal_match:
+                        nutrition["calories"] = float(cal_match.group(1))
         
         return nutrition
+    except Exception as e:
+        print(f"Error getting nutrition: {e}")
+        return {"protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0}
