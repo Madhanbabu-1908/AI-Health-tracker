@@ -8,6 +8,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #333;
+  min-height: 100vh;
 }
 
 .app {
@@ -33,7 +34,7 @@ header h1 {
 }
 
 header p {
-  font-size: 14px;
+  font-size: 13px;
   opacity: 0.9;
 }
 
@@ -46,11 +47,11 @@ header p {
 
 .tabs button {
   flex: 1;
-  min-width: 80px;
-  padding: 12px 8px;
+  min-width: 65px;
+  padding: 12px 6px;
   background: none;
   border: none;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.3s;
 }
@@ -66,11 +67,45 @@ header p {
   padding-bottom: 30px;
 }
 
-/* Dashboard Styles */
-.dashboard .stats {
-  display: grid;
-  gap: 20px;
+/* Onboarding */
+.onboarding {
+  text-align: center;
+  padding: 20px;
+}
+
+.onboarding h2 {
   margin-bottom: 20px;
+  color: #667eea;
+}
+
+.onboarding form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.onboarding input {
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.onboarding button {
+  padding: 15px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* Dashboard */
+.stats-grid {
+  display: grid;
+  gap: 15px;
 }
 
 .stat-card {
@@ -81,16 +116,15 @@ header p {
 
 .stat-card h3 {
   margin-bottom: 10px;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .progress-bar {
   background: #e0e0e0;
-  height: 30px;
-  border-radius: 15px;
+  height: 25px;
+  border-radius: 12px;
   overflow: hidden;
   margin: 10px 0;
-  position: relative;
 }
 
 .progress {
@@ -101,45 +135,15 @@ header p {
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: bold;
 }
 
-.stat-value {
-  font-size: 20px;
-  font-weight: bold;
-  text-align: center;
-  margin-top: 5px;
-}
-
-.warning {
-  color: #ff4444;
-  font-weight: bold;
-  margin-top: 5px;
-  text-align: center;
-}
-
-.ai-advice {
-  background: #e3f2fd;
-  padding: 15px;
-  border-radius: 10px;
-  margin-top: 20px;
-}
-
-.ai-advice h3 {
-  margin-bottom: 10px;
-  color: #1976d2;
-}
-
-/* Food Logger Styles */
-.search-section, .suggestions-section, .quantity-section {
-  margin-bottom: 20px;
-}
-
+/* Food Logger */
 .search-box {
   display: flex;
   gap: 10px;
-  margin-top: 10px;
+  margin: 15px 0;
 }
 
 .search-box input {
@@ -150,7 +154,7 @@ header p {
   font-size: 16px;
 }
 
-.search-box button, .quantity-control button {
+.search-box button {
   padding: 12px 20px;
   background: #667eea;
   color: white;
@@ -159,8 +163,36 @@ header p {
   cursor: pointer;
 }
 
-.search-results {
-  margin-top: 15px;
+.search-results, .foods-section {
+  margin: 20px 0;
+}
+
+.food-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 15px 0;
+}
+
+.food-btn {
+  padding: 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.food-btn:active {
+  transform: scale(0.98);
+}
+
+.food-btn small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.9;
+  margin-top: 5px;
 }
 
 .food-item {
@@ -169,11 +201,11 @@ header p {
   margin: 8px 0;
   border-radius: 10px;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: background 0.2s;
 }
 
 .food-item:active {
-  transform: scale(0.98);
+  background: #e0e0e0;
 }
 
 .food-name {
@@ -184,46 +216,23 @@ header p {
 
 .food-nutrition {
   display: flex;
-  gap: 15px;
-  font-size: 13px;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
   color: #666;
 }
 
-.food-unit {
-  color: #999;
-  font-size: 11px;
-}
-
-.suggestions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.suggestion-btn {
-  padding: 12px;
-  background: #f0f0f0;
-  border: none;
+.quantity-section {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f8f9fa;
   border-radius: 10px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.suggestion-btn:active {
-  background: #e0e0e0;
-}
-
-.suggestion-btn small {
-  display: block;
-  font-size: 11px;
-  color: #666;
-  margin-top: 3px;
 }
 
 .quantity-control {
   display: flex;
   gap: 10px;
+  align-items: center;
   margin-top: 10px;
 }
 
@@ -232,9 +241,16 @@ header p {
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 8px;
+  font-size: 16px;
 }
 
-/* Add Food Form */
+.empty-message {
+  text-align: center;
+  padding: 30px;
+  color: #999;
+}
+
+/* Add Food */
 .add-food form {
   margin-top: 20px;
 }
@@ -266,7 +282,7 @@ header p {
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
@@ -283,107 +299,46 @@ header p {
   margin-top: 10px;
 }
 
-.tips {
-  margin-top: 30px;
-  padding: 15px;
-  background: #fff3e0;
-  border-radius: 10px;
-}
-
-.tips ul {
-  margin-left: 20px;
-  margin-top: 10px;
-}
-
-.tips li {
-  margin: 5px 0;
-}
-
-/* Custom Foods List */
-.foods-list {
-  display: grid;
-  gap: 15px;
+.predicted-nutrition {
   margin-top: 20px;
-}
-
-.food-card {
-  background: #f8f9fa;
   padding: 15px;
+  background: #e3f2fd;
   border-radius: 10px;
-  border-left: 4px solid #667eea;
 }
 
-.food-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.food-header h3 {
-  font-size: 18px;
-}
-
-.delete-btn {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 5px;
-}
-
-.food-details {
+.nutrition-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
   margin: 10px 0;
-}
-
-.detail {
-  font-size: 14px;
-}
-
-.detail .label {
-  font-weight: bold;
-  margin-right: 5px;
-}
-
-.food-meta {
-  margin-top: 8px;
-  color: #999;
-  font-size: 11px;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px;
-  color: #999;
 }
 
 /* History Chart */
 .chart-controls {
   display: flex;
-  gap: 10px;
-  margin: 15px 0;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin: 20px 0;
 }
 
-.chart-controls button {
-  padding: 8px 16px;
-  background: #f0f0f0;
-  border: none;
+.control-group {
+  flex: 1;
+  min-width: 120px;
+}
+
+.control-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.control-group select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
   border-radius: 8px;
-  cursor: pointer;
-}
-
-.chart-controls button.active {
-  background: #667eea;
-  color: white;
-}
-
-.empty-chart {
-  text-align: center;
-  padding: 60px 20px;
-  color: #999;
+  font-size: 14px;
 }
 
 .insights {
@@ -395,17 +350,27 @@ header p {
 
 .insight-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 10px;
   margin-top: 10px;
 }
 
 .insight {
   text-align: center;
-  font-size: 14px;
+  padding: 10px;
+  background: white;
+  border-radius: 8px;
 }
 
 /* AI Chat */
+.profile-context {
+  margin-bottom: 15px;
+  padding: 8px;
+  background: #e3f2fd;
+  border-radius: 8px;
+  text-align: center;
+}
+
 .chat-history {
   max-height: 400px;
   overflow-y: auto;
@@ -451,7 +416,7 @@ header p {
   background: #e0e0e0;
   border: none;
   border-radius: 15px;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
 }
 
@@ -486,51 +451,68 @@ header p {
 
 /* Messages */
 .message {
-  margin-top: 15px;
-  padding: 12px;
-  border-radius: 8px;
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  border-radius: 25px;
   text-align: center;
+  z-index: 1000;
   animation: fadeIn 0.3s;
+  max-width: 90%;
 }
 
 .message.success {
-  background: #d4edda;
-  color: #155724;
+  background: #4caf50;
+  color: white;
 }
 
 .message.error {
-  background: #f8d7da;
-  color: #721c24;
+  background: #f44336;
+  color: white;
 }
 
-.loading, .loading-stats {
+.loading {
   text-align: center;
   padding: 40px;
   color: #999;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Utility */
+.text-center {
+  text-align: center;
 }
 
-/* Responsive */
+.mt-20 {
+  margin-top: 20px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Mobile Responsive */
 @media (max-width: 500px) {
   .tabs button {
-    font-size: 12px;
-    padding: 10px 5px;
+    font-size: 10px;
+    padding: 10px 4px;
   }
   
   .form-row {
     grid-template-columns: 1fr;
-    gap: 15px;
+  }
+  
+  .food-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+  
+  .nutrition-grid {
+    grid-template-columns: 1fr 1fr;
   }
   
   .insight-stats {
-    grid-template-columns: 1fr;
-  }
-  
-  .food-details {
     grid-template-columns: 1fr;
   }
 }
