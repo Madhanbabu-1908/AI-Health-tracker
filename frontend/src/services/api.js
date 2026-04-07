@@ -1,7 +1,8 @@
-// Backend API URL - Update this with your Render backend URL
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://madhan-health-api.onrender.com'
+// Backend API URL - Update with your Render backend URL
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://ai-health-tracker-yycb.onrender.com'
 
-// Helper function for API calls
+console.log('API URL:', API_BASE_URL)
+
 export async function apiCall(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`
   const response = await fetch(url, {
