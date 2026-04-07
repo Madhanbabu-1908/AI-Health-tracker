@@ -131,6 +131,12 @@ async def ai_chat(request: AIRequest):
     
     result = await orchestrator.process_ai_query(request.query, context)
     return result
+    
+@app.get("/ai/token-usage")
+async def get_token_usage():
+    """Get current token usage across all AI models"""
+    usage = orchestrator.ai_agent.get_token_usage_summary()
+    return usage
 
 @app.get("/today")
 async def get_today():
