@@ -2,105 +2,118 @@ import React, { useState, useEffect } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { API_BASE_URL } from '../services/api'
 
-export default function HistoryChart({ refreshTrigger }) {
-  const [data, setData] = useState([])
+export default function HistoryChart() {
+  const [dateRange, setDateRange] = useState('week')
+  const [nutritionMetric, setNutritionMetric] = useState('protein')
+  const [chartData, setChartData] = useState([])
+  const [analysis, setAnalysis] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [chartType, setChartType] = useState('line')
+
+  const dateRangeOptions = [
+    { value: 'week', label: 'Last 7 Days' },
+    { value: 'weeks', label: 'Last 14 Days' },
+    { value: 'weeks3', label: 'Last 21 Days' },
+    { value: 'month', label: 'Last 30 Days' }
+  ]
+
+  const nutritionOptions = [
+    { value: 'protein', label: '🥩 Protein', color: '#8884d8' },
+    { value: 'carbs', label: '🍞 Carbs', color: '#ffaa44' },
+    { value: 'cholesterol', label: '🍳 Cholesterol', color: '#ff4444' },
+    { value: 'iron', label: '🩸 Iron', color: '#82ca9d' },
+    { value: 'calories', label: '🔥 Calories', color: '#4caf50' },
+    { value: 'cost', label: '💰 Cost', color: '#ff6b6b' }
+  ]
 
   useEffect(() => {
-    fetchHistory()
-  }, [refreshTrigger])
+    fetchAnalysis()
+  }, [dateRange])
 
-  const fetchHistory = async () => {
+  const fetchAnalysis = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/history/7`)
-      const history = await response.json()
+      const response = await fetch(`${API_BASE_URL}/nutrition/analysis?date_range=${dateRange}`)
+      const data = await response.json()
+      setAnalysis(data)
       
-      const chartData = Object.entries(history)
-        .map(([date, dayData]) => ({
-          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          protein: dayData.protein || 0,
-          cholesterol: dayData.cholesterol || 0,
-          calories: dayData.calories || 0
-        }))
-        .reverse()
-      
-      setData(chartData)
+      const chartData = data.daily_data.dates.map((date, index) => ({
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        protein: data.daily_data.protein[index],
+        carbs: data.daily_data.carbs[index],
+        cholesterol: data.daily_data.cholesterol[index],
+        iron: data.daily_data.iron[index],
+        calories: data.daily_data.calories[index] || 0,
+        cost: data.daily_data.cost?.[index] || 0
+      }))
+      setChartData(chartData)
     } catch (error) {
-      console.error('Error fetching history:', error)
+      console.error('Error:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  if (loading) return <div className="loading">Loading history...</div>
+  if (loading) return <div className="loading">Loading chart...</div>
 
-  if (data.length === 0) {
-    return (
-      <div className="history-chart">
-        <h2>📈 Last 7 Days Progress</h2>
-        <div className="empty-chart">
-          <p>No data yet. Start logging your meals!</p>
-          <p>Go to "Log Food" tab to add your first entry.</p>
-        </div>
-      </div>
-    )
-  }
+  const selectedMetric = nutritionOptions.find(m => m.value === nutritionMetric)
+  const metricData = analysis?.[nutritionMetric]
 
   return (
     <div className="history-chart">
-      <h2>📈 Last 7 Days Progress</h2>
+      <h2>📈 Nutrition Progress</h2>
       
       <div className="chart-controls">
-        <button className={chartType === 'line' ? 'active' : ''} onClick={() => setChartType('line')}>
-          📊 Line Chart
-        </button>
-        <button className={chartType === 'bar' ? 'active' : ''} onClick={() => setChartType('bar')}>
-          📊 Bar Chart
-        </button>
+        <div className="control-group">
+          <label>Date Range:</label>
+          <select value={dateRange} onChange={(e) => setDateRange(e.target.value)}>
+            {dateRangeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+        </div>
+        
+        <div className="control-group">
+          <label>Nutrition:</label>
+          <select value={nutritionMetric} onChange={(e) => setNutritionMetric(e.target.value)}>
+            {nutritionOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+        </div>
       </div>
 
       <ResponsiveContainer width="100%" height={400}>
-        {chartType === 'line' ? (
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis yAxisId="left" label={{ value: 'Protein (g)', angle: -90, position: 'insideLeft' }} />
-            <YAxis yAxisId="right" orientation="right" label={{ value: 'Cholesterol (mg)', angle: 90, position: 'insideRight' }} />
-            <Tooltip />
-            <Legend />
-            <Line yAxisId="left" type="monotone" dataKey="protein" stroke="#8884d8" name="Protein (g)" strokeWidth={2} />
-            <Line yAxisId="right" type="monotone" dataKey="cholesterol" stroke="#ff4444" name="Cholesterol (mg)" strokeWidth={2} />
-            <Line yAxisId="left" type="monotone" dataKey="calories" stroke="#82ca9d" name="Calories" strokeWidth={2} />
-          </LineChart>
-        ) : (
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="protein" fill="#8884d8" name="Protein (g)" />
-            <Bar dataKey="calories" fill="#82ca9d" name="Calories" />
-          </BarChart>
-        )}
+        <LineChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" />
+          <XAxis dataKey="date" />
+          <YAxis />
+          <Tooltip />
+          <Legend />
+          <Line type="monotone" dataKey={nutritionMetric} stroke={selectedMetric?.color} name={selectedMetric?.label} strokeWidth={2} />
+        </LineChart>
       </ResponsiveContainer>
 
-      <div className="insights">
-        <h3>📊 Summary</h3>
-        <div className="insight-stats">
-          <div className="insight">
-            <strong>Avg Protein:</strong> {(data.reduce((sum, d) => sum + d.protein, 0) / data.length).toFixed(1)}g/day
-          </div>
-          <div className="insight">
-            <strong>Best Day:</strong> {data.reduce((best, d) => d.protein > best.protein ? d : best, data[0]).date}
-          </div>
-          <div className="insight">
-            <strong>Goal Met:</strong> {data.filter(d => d.protein >= 100).length}/7 days
+      {metricData && (
+        <div className="insights">
+          <h3>📊 Analysis</h3>
+          <div className="insight-stats">
+            <div className="insight">
+              <strong>Average {selectedMetric?.label}:</strong> {metricData.average.toFixed(1)}
+            </div>
+            {metricData.goal && (
+              <div className="insight">
+                <strong>Goal:</strong> {metricData.goal}
+              </div>
+            )}
+            {metricData.goal_hit_percentage && (
+              <div className="insight">
+                <strong>Goal Met:</strong> {metricData.goal_hit_percentage.toFixed(0)}% of days
+              </div>
+            )}
+            {metricData.within_limit_percentage && (
+              <div className="insight">
+                <strong>Within Limit:</strong> {metricData.within_limit_percentage.toFixed(0)}% of days
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
