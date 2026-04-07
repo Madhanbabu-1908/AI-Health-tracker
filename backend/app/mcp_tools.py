@@ -1,6 +1,7 @@
 import httpx
 from duckduckgo_search import DDGS
 from typing import List, Dict
+import re
 
 class MCPTools:
     """Model Context Protocol tools for external services"""
@@ -46,45 +47,60 @@ class MCPTools:
         return {"sentiment": sentiment, "score": score}
     
     @staticmethod
-async def get_nutrition_from_api(food_name: str) -> Dict:
-    """Get nutrition information from web"""
-    try:
-        results = await MCPTools.web_search(f"{food_name} nutrition per 100g", 2)
-        
-        # Handle case when results is None
-        if not results:
-            return {
+    async def get_nutrition_from_api(food_name: str) -> Dict:
+        """Get nutrition information from web"""
+        try:
+            results = await MCPTools.web_search(f"{food_name} nutrition per 100g", 2)
+            
+            # Handle case when results is None or empty
+            if not results:
+                return {
+                    "protein": 0,
+                    "carbs": 0,
+                    "cholesterol": 0,
+                    "iron": 0,
+                    "calories": 0
+                }
+            
+            # Extract nutrition info from search results
+            nutrition = {
                 "protein": 0,
                 "carbs": 0,
                 "cholesterol": 0,
                 "iron": 0,
                 "calories": 0
             }
-        
-        # Extract nutrition info from search results (simplified)
-        nutrition = {
-            "protein": 0,
-            "carbs": 0,
-            "cholesterol": 0,
-            "iron": 0,
-            "calories": 0
-        }
-        
-        for result in results:
-            if result and "snippet" in result:
-                snippet = result["snippet"].lower()
-                if "protein" in snippet:
-                    import re
-                    protein_match = re.search(r'protein\s*(\d+(?:\.\d+)?)\s*g', snippet)
-                    if protein_match:
-                        nutrition["protein"] = float(protein_match.group(1))
-                
-                if "calories" in snippet:
-                    cal_match = re.search(r'calories?\s*(\d+)', snippet)
-                    if cal_match:
-                        nutrition["calories"] = float(cal_match.group(1))
-        
-        return nutrition
-    except Exception as e:
-        print(f"Error getting nutrition: {e}")
-        return {"protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0}
+            
+            for result in results:
+                if result and "snippet" in result:
+                    snippet = result["snippet"].lower()
+                    
+                    # Extract protein
+                    if "protein" in snippet:
+                        protein_match = re.search(r'protein\s*(\d+(?:\.\d+)?)\s*g', snippet)
+                        if protein_match:
+                            nutrition["protein"] = float(protein_match.group(1))
+                    
+                    # Extract calories
+                    if "calories" in snippet:
+                        cal_match = re.search(r'calories?\s*(\d+)', snippet)
+                        if cal_match:
+                            nutrition["calories"] = float(cal_match.group(1))
+                    
+                    # Extract carbs
+                    if "carb" in snippet:
+                        carbs_match = re.search(r'carb(?:ohydrate)?s?\s*(\d+(?:\.\d+)?)\s*g', snippet)
+                        if carbs_match:
+                            nutrition["carbs"] = float(carbs_match.group(1))
+                    
+                    # Extract cholesterol
+                    if "cholesterol" in snippet:
+                        chol_match = re.search(r'cholesterol\s*(\d+(?:\.\d+)?)\s*mg', snippet)
+                        if chol_match:
+                            nutrition["cholesterol"] = float(chol_match.group(1))
+            
+            return nutrition
+            
+        except Exception as e:
+            print(f"Error getting nutrition: {e}")
+            return {"protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0}
