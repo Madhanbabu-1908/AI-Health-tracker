@@ -16,7 +16,6 @@ export default function AddFood() {
   const [messageType, setMessageType] = useState('')
   const [loading, setLoading] = useState(false)
   const [aiLoading, setAiLoading] = useState(false)
-  const [aiPrediction, setAiPrediction] = useState(null)
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -31,7 +30,6 @@ export default function AddFood() {
     }
 
     setAiLoading(true)
-    setAiPrediction(null)
 
     try {
       const response = await fetch(`${API_BASE_URL}/ai/predict-nutrition?food_name=${encodeURIComponent(formData.name)}`, {
@@ -40,8 +38,7 @@ export default function AddFood() {
       
       const data = await response.json()
       
-      if (data.success) {
-        setAiPrediction(data.nutrition)
+      if (data.success && data.nutrition) {
         setFormData(prev => ({
           ...prev,
           protein: data.nutrition.protein || '',
@@ -51,7 +48,7 @@ export default function AddFood() {
           calories: data.nutrition.calories || ''
         }))
         setMessageType('success')
-        setMessage(`🤖 AI predicted nutrition for "${formData.name}". You can edit values if needed.`)
+        setMessage(`🤖 AI filled nutrition for "${formData.name}". You can edit if needed.`)
         setTimeout(() => setMessage(''), 4000)
       } else {
         setMessageType('error')
@@ -59,7 +56,7 @@ export default function AddFood() {
         setTimeout(() => setMessage(''), 3000)
       }
     } catch (error) {
-      console.error('Error fetching AI prediction:', error)
+      console.error('Error:', error)
       setMessageType('error')
       setMessage('❌ AI prediction failed. Please enter manually.')
       setTimeout(() => setMessage(''), 3000)
@@ -74,14 +71,12 @@ export default function AddFood() {
     if (!formData.name.trim()) {
       setMessageType('error')
       setMessage('❌ Please enter food name')
-      setTimeout(() => setMessage(''), 3000)
       return
     }
     
     if (!formData.cost) {
       setMessageType('error')
       setMessage('❌ Please enter cost')
-      setTimeout(() => setMessage(''), 3000)
       return
     }
     
@@ -118,18 +113,15 @@ export default function AddFood() {
           cost: '',
           unit: 'serving'
         })
-        setAiPrediction(null)
         setTimeout(() => setMessage(''), 3000)
+        window.dispatchEvent(new Event('foodsUpdated'))
       } else {
         setMessageType('error')
         setMessage(`❌ ${data.detail || 'Failed to add food'}`)
-        setTimeout(() => setMessage(''), 3000)
       }
     } catch (error) {
-      console.error('Error:', error)
       setMessageType('error')
       setMessage('❌ Error connecting to server')
-      setTimeout(() => setMessage(''), 3000)
     }
     
     setLoading(false)
@@ -138,7 +130,7 @@ export default function AddFood() {
   return (
     <div className="add-food">
       <h2>➕ Add Custom Food</h2>
-      <p className="info-text">Add your own foods with their nutrition values. Try the <strong>🤖 AI Auto-Fill</strong> button!</p>
+      <p className="info-text">Enter food name and click <strong>🤖 AI Auto-Fill</strong> to get nutrition values!</p>
       
       <form onSubmit={handleSubmit}>
         <div className="form-section">
@@ -152,7 +144,7 @@ export default function AddFood() {
                 name="name" 
                 value={formData.name}
                 onChange={handleChange}
-                placeholder="e.g., Homemade Chicken Curry, Protein Shake"
+                placeholder="e.g., Chicken Biryani, Paneer Butter Masala"
                 required
               />
               <button 
@@ -164,7 +156,6 @@ export default function AddFood() {
                 {aiLoading ? '🤖 Predicting...' : '🤖 AI Auto-Fill'}
               </button>
             </div>
-            <small>Enter food name and click AI Auto-Fill to get nutrition predictions</small>
           </div>
 
           <div className="form-group">
@@ -176,97 +167,39 @@ export default function AddFood() {
               onChange={handleChange}
               placeholder="e.g., plate, 100g, cup"
             />
-            <small>How you measure this food</small>
           </div>
         </div>
 
-        {aiPrediction && (
-          <div className="ai-prediction-banner">
-            <span>🤖</span>
-            <div>
-              <strong>AI Predicted Values</strong>
-              <p>Based on web search for "{formData.name}"</p>
-            </div>
-          </div>
-        )}
-
         <div className="form-section">
-          <h3>🥗 Nutrition Information (per serving)</h3>
+          <h3>🥗 Nutrition (per serving)</h3>
           
           <div className="form-row">
             <div className="form-group">
               <label>🥩 Protein (g)</label>
-              <input 
-                type="number" 
-                name="protein" 
-                value={formData.protein}
-                onChange={handleChange}
-                step="0.1"
-                placeholder="e.g., 25"
-              />
+              <input type="number" name="protein" value={formData.protein} onChange={handleChange} step="0.1" placeholder="0" />
             </div>
-
             <div className="form-group">
               <label>🍞 Carbs (g)</label>
-              <input 
-                type="number" 
-                name="carbs" 
-                value={formData.carbs}
-                onChange={handleChange}
-                step="0.1"
-                placeholder="e.g., 30"
-              />
+              <input type="number" name="carbs" value={formData.carbs} onChange={handleChange} step="0.1" placeholder="0" />
             </div>
-
             <div className="form-group">
               <label>🍳 Cholesterol (mg)</label>
-              <input 
-                type="number" 
-                name="cholesterol" 
-                value={formData.cholesterol}
-                onChange={handleChange}
-                step="1"
-                placeholder="e.g., 80"
-              />
+              <input type="number" name="cholesterol" value={formData.cholesterol} onChange={handleChange} step="1" placeholder="0" />
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
               <label>🩸 Iron (mg)</label>
-              <input 
-                type="number" 
-                name="iron" 
-                value={formData.iron}
-                onChange={handleChange}
-                step="0.1"
-                placeholder="e.g., 2.5"
-              />
+              <input type="number" name="iron" value={formData.iron} onChange={handleChange} step="0.1" placeholder="0" />
             </div>
-
             <div className="form-group">
               <label>🔥 Calories</label>
-              <input 
-                type="number" 
-                name="calories" 
-                value={formData.calories}
-                onChange={handleChange}
-                step="1"
-                placeholder="e.g., 250"
-              />
+              <input type="number" name="calories" value={formData.calories} onChange={handleChange} step="1" placeholder="0" />
             </div>
-
             <div className="form-group">
               <label>💰 Cost (₹) *</label>
-              <input 
-                type="number" 
-                name="cost" 
-                value={formData.cost}
-                onChange={handleChange}
-                step="0.01"
-                placeholder="e.g., 150"
-                required
-              />
+              <input type="number" name="cost" value={formData.cost} onChange={handleChange} step="0.01" placeholder="0" required />
             </div>
           </div>
         </div>
@@ -285,13 +218,11 @@ export default function AddFood() {
       <div className="tips">
         <h4>💡 Tips:</h4>
         <ul>
-          <li>Enter food name and click <strong>🤖 AI Auto-Fill</strong> to automatically get nutrition values</li>
-          <li>You can edit the AI-predicted values before saving</li>
-          <li>Check nutritional labels on packaged foods for accuracy</li>
-          <li>For homemade food, sum up ingredients and divide by servings</li>
-          <li>Once added, you can log this food from the "Log Food" tab</li>
+          <li>Click <strong>🤖 AI Auto-Fill</strong> after entering food name</li>
+          <li>AI searches the web for nutrition information</li>
+          <li>You can edit values before saving</li>
         </ul>
       </div>
     </div>
   )
-        }
+}
