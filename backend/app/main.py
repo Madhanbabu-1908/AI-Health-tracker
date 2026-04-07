@@ -148,11 +148,11 @@ def calculate_nutrition_goals(weight_kg, primary_goal, activity_level):
 
 @app.get("/")
 async def root():
-    return {"message": "Madhan Health Tracker API", "status": "active", "version": "3.0"}
+    return {"message": "AI Health Tracker API", "status": "active", "version": "3.0"}
 
 # ========== User Profile ==========
 
-@app.post("/user/setup-goals")
+@app.get("/user/setup-goals")
 async def setup_user_goals(
     nickname: str,
     height: float,
