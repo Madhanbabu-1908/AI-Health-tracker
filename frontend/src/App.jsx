@@ -94,21 +94,29 @@ function App() {
   }
 
   const resetProfile = async () => {
-    if (confirm('Are you sure you want to reset your profile? All your food data will be lost.')) {
+    if (confirm('⚠️ WARNING: This will permanently delete ALL your data including:\n\n• Profile information\n• All food entries (history)\n• All custom foods you added\n\nThis cannot be undone. Are you sure?')) {
+      setLoading(true)
       try {
-        const response = await fetch(`${API_BASE_URL}/clear-profile`, { method: 'DELETE' })
-        if (response.ok) {
+        const response = await fetch(`${API_BASE_URL}/reset-all-data`, { 
+          method: 'DELETE' 
+        })
+        const data = await response.json()
+        
+        if (data.success) {
           setProfile(null)
           setNutritionGoals(null)
           setProfileInitialized(false)
           setShowReset(false)
+          alert('✅ All data has been reset. The page will reload.')
           window.location.reload()
         } else {
-          alert('Failed to reset profile. Please try again.')
+          alert('Failed to reset data: ' + data.message)
         }
       } catch (error) {
-        console.error('Error resetting profile:', error)
-        alert('Error resetting profile. Please check backend connection.')
+        console.error('Error resetting data:', error)
+        alert('Error resetting data. Please try again.')
+      } finally {
+        setLoading(false)
       }
     }
   }
@@ -273,7 +281,7 @@ function App() {
                 <input 
                   type="number" 
                   name="height" 
-                  placeholder="Height (cm)" 
+                  placeholder="Height (cm) - e.g., 170" 
                   value={formData.height} 
                   onChange={handleInputChange} 
                   required 
@@ -281,7 +289,7 @@ function App() {
                 <input 
                   type="number" 
                   name="weight" 
-                  placeholder="Weight (kg)" 
+                  placeholder="Weight (kg) - e.g., 70" 
                   value={formData.weight} 
                   onChange={handleInputChange} 
                   required 
@@ -400,7 +408,7 @@ function App() {
             onClick={resetProfile}
             style={{ padding: '8px 16px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
           >
-            Reset Profile (Clear Test Data)
+            Reset All Data (Delete Everything)
           </button>
         </div>
       )}
