@@ -12,7 +12,7 @@ function App() {
   const [nutritionGoals, setNutritionGoals] = useState(null)
   const [profileInitialized, setProfileInitialized] = useState(false)
   const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   
   const [formData, setFormData] = useState({
@@ -48,10 +48,17 @@ function App() {
   }, [])
 
   const checkProfile = async () => {
+    setLoading(true)
+    setError('')
+    
     try {
+      console.log('Checking profile at:', `${API_BASE_URL}/profile`)
+      
       const response = await fetch(`${API_BASE_URL}/profile`)
+      
       if (response.ok) {
         const data = await response.json()
+        console.log('Profile found:', data)
         setProfile(data)
         
         try {
@@ -65,9 +72,17 @@ function App() {
         }
         
         setProfileInitialized(true)
+      } else if (response.status === 404) {
+        console.log('No profile found - showing onboarding')
+        setProfileInitialized(false)
+      } else {
+        setError(`Server error: ${response.status}`)
       }
     } catch (error) {
-      console.error('Profile not found - showing onboarding')
+      console.error('Connection error:', error)
+      setError(`Cannot connect to backend. Make sure backend is running at ${API_BASE_URL}`)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -90,7 +105,6 @@ function App() {
     setError('')
     
     try {
-      // Validate inputs
       if (!formData.nickname || !formData.height || !formData.weight || !formData.age) {
         setError('Please fill all required fields')
         setLoading(false)
@@ -100,7 +114,6 @@ function App() {
       const heightCm = parseFloat(formData.height)
       const weightKg = parseFloat(formData.weight)
       
-      // Validate ranges
       if (heightCm < 50 || heightCm > 250) {
         setError('Height must be between 50cm and 250cm')
         setLoading(false)
@@ -124,6 +137,8 @@ function App() {
         secondary_goals: formData.secondary_goals.join(',')
       })
       
+      console.log('Creating profile at:', `${API_BASE_URL}/user/setup-goals?${params}`)
+      
       const response = await fetch(`${API_BASE_URL}/user/setup-goals?${params}`, {
         method: 'POST'
       })
@@ -139,21 +154,51 @@ function App() {
       }
     } catch (error) {
       console.error('Error setting up profile:', error)
-      setError('Error connecting to server. Please try again.')
+      setError(`Error: ${error.message}`)
     }
     setLoading(false)
   }
 
-  // Loading state while checking profile
-  if (!profileInitialized && !profile && !error) {
+  // Show loading state
+  if (loading) {
     return (
       <div className="app">
         <header>
-          <h1>🏋️ AI Health Tracker</h1>
+          <h1>🏋️ Madhan Health Tracker</h1>
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
-          <div className="loading">Loading...</div>
+          <div className="loading">
+            <div>Loading...</div>
+            <div style={{ fontSize: '12px', marginTop: '10px', color: '#999' }}>
+              Backend: {API_BASE_URL}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show error with retry button
+  if (error && !profileInitialized) {
+    return (
+      <div className="app">
+        <header>
+          <h1>🏋️ Madhan Health Tracker</h1>
+          <p>Personalized Nutrition Coach</p>
+        </header>
+        <div className="content">
+          <div className="error-message" style={{ background: '#fee', color: '#c00', padding: '20px', borderRadius: '16px', textAlign: 'center' }}>
+            <h3>Connection Error</h3>
+            <p>{error}</p>
+            <p style={{ fontSize: '12px', marginTop: '10px' }}>Backend URL: {API_BASE_URL}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              style={{ marginTop: '16px', padding: '10px 20px', background: '#667eea', color: 'white', border: 'none', borderRadius: '10px', cursor: 'pointer' }}
+            >
+              Retry Connection
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -164,7 +209,7 @@ function App() {
     return (
       <div className="app">
         <header>
-          <h1>🏋️ AI Health Tracker</h1>
+          <h1>🏋️ Madhan Health Tracker</h1>
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
@@ -292,7 +337,6 @@ function App() {
     water_goal: 2.5
   }
 
-  // Get BMI category color
   const getBMIColor = (bmi) => {
     if (bmi < 18.5) return '#ffaa44'
     if (bmi < 25) return '#4caf50'
