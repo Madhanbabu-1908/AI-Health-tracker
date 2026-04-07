@@ -1,26 +1,25 @@
 import React, { useState, useEffect } from 'react'
 import { API_BASE_URL } from '../services/api'
 
-export default function FoodLogger({ onLog }) {
+export default function FoodLogger() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
+  const [foods, setFoods] = useState([])
   const [quantity, setQuantity] = useState(1)
-  const [notes, setNotes] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const [suggestions, setSuggestions] = useState([])
 
   useEffect(() => {
-    fetchSuggestions()
+    loadFoods()
   }, [])
 
-  const fetchSuggestions = async () => {
+  const loadFoods = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/food_suggestions?limit=8`)
+      const response = await fetch(`${API_BASE_URL}/food/list`)
       const data = await response.json()
-      setSuggestions(data.suggestions || [])
+      setFoods(data.foods || [])
     } catch (error) {
-      console.error('Error fetching suggestions:', error)
+      console.error('Error loading foods:', error)
     }
   }
 
@@ -29,12 +28,12 @@ export default function FoodLogger({ onLog }) {
     
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/search_foods?query=${encodeURIComponent(searchQuery)}`)
+      const response = await fetch(`${API_BASE_URL}/food/search?query=${encodeURIComponent(searchQuery)}`)
       const data = await response.json()
       setSearchResults(data.results || [])
     } catch (error) {
       console.error('Error searching foods:', error)
-      setMessage('❌ Error searching. Check backend connection.')
+      setMessage('❌ Error searching. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -43,18 +42,16 @@ export default function FoodLogger({ onLog }) {
   const logFood = async (food) => {
     setLoading(true)
     try {
-      const url = `${API_BASE_URL}/log_food?name=${encodeURIComponent(food.name)}&quantity=${quantity}&unit=${food.unit || 'serving'}&notes=${encodeURIComponent(notes)}`
+      const url = `${API_BASE_URL}/food/log?name=${encodeURIComponent(food.name)}&quantity=${quantity}&unit=${food.default_unit || 'serving'}`
       const response = await fetch(url, { method: 'POST' })
       const data = await response.json()
       
       if (data.success) {
-        setMessage(`✅ Logged ${quantity} × ${food.name}. ${data.advice}`)
-        setTimeout(() => setMessage(''), 4000)
-        if (onLog) onLog()
+        setMessage(`✅ Logged ${quantity} × ${food.name}`)
+        setTimeout(() => setMessage(''), 3000)
         setSearchQuery('')
         setSearchResults([])
         setQuantity(1)
-        setNotes('')
       } else {
         setMessage(`❌ ${data.error || 'Failed to log food'}`)
       }
@@ -75,7 +72,7 @@ export default function FoodLogger({ onLog }) {
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="e.g., chicken breast, homemade paneer, protein shake..."
+            placeholder="Search for food..."
             onKeyPress={(e) => e.key === 'Enter' && searchFoods()}
           />
           <button onClick={searchFoods} disabled={loading}>Search</button>
@@ -83,15 +80,15 @@ export default function FoodLogger({ onLog }) {
         
         {searchResults.length > 0 && (
           <div className="search-results">
-            <h3>Results:</h3>
+            <h3>Search Results:</h3>
             {searchResults.map((food, idx) => (
               <div key={idx} className="food-item" onClick={() => logFood(food)}>
                 <div className="food-name">{food.name}</div>
                 <div className="food-nutrition">
-                  <span>🥩 {food.protein}g</span>
-                  <span>🍳 {food.cholesterol}mg</span>
-                  <span>🔥 {food.calories}cal</span>
-                  <span className="food-unit">per {food.unit}</span>
+                  <span>🥩 {food.protein_per_unit}g</span>
+                  <span>🍞 {food.carbs_per_unit}g</span>
+                  <span>🍳 {food.cholesterol_per_unit}mg</span>
+                  <span>💰 ₹{food.cost}</span>
                 </div>
               </div>
             ))}
@@ -99,34 +96,31 @@ export default function FoodLogger({ onLog }) {
         )}
       </div>
 
-      <div className="suggestions-section">
-        <h3>⭐ Frequently Used</h3>
-        <div className="suggestions-grid">
-          {suggestions.map((food, idx) => (
-            <button key={idx} onClick={() => logFood(food)} className="suggestion-btn">
+      <div className="foods-section">
+        <h3>📚 Your Food Library</h3>
+        <div className="food-grid">
+          {foods.map((food) => (
+            <button key={food.id} onClick={() => logFood(food)} className="food-btn" disabled={loading}>
               {food.name}
-              <small>{food.protein}g protein</small>
+              <small>🥩 {food.protein_per_unit}g | 💰 ₹{food.cost}</small>
             </button>
           ))}
         </div>
+        {foods.length === 0 && (
+          <p className="empty-message">No foods added yet. Go to "Add Food" tab to add your first food!</p>
+        )}
       </div>
 
       <div className="quantity-section">
-        <h3>⚙️ Log Options</h3>
+        <h3>⚙️ Quantity</h3>
         <div className="quantity-control">
-          <label>Quantity:</label>
+          <label>Number of servings:</label>
           <input 
             type="number" 
             value={quantity} 
             onChange={(e) => setQuantity(parseFloat(e.target.value) || 1)}
             step="0.5"
             min="0.1"
-          />
-          <input 
-            type="text" 
-            placeholder="Notes (optional)" 
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
           />
         </div>
       </div>
