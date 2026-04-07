@@ -73,7 +73,7 @@ async def setup_user_goals(
     )
     
     # Calculate BMI
-    bmi = weight / ((height / 100) ** 2)
+    bmi = weight / ((height / 100) ** 2) 
     
     # Save profile
     profile = UserProfile(
