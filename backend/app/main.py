@@ -376,6 +376,16 @@ async def get_today():
             "cholesterol": round((totals["cholesterol"] / goals["cholesterol_limit"]) * 100, 1) if goals["cholesterol_limit"] > 0 else 0
         }
     }
+@app.delete("/clear-profile")
+async def clear_profile():
+    """Delete existing profile to reset onboarding"""
+    try:
+        profile_path = os.path.join(DATA_DIR, "profile.json")
+        with open(profile_path, "w") as f:
+            json.dump(None, f)
+        return {"success": True, "message": "Profile cleared successfully"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 @app.get("/history")
 async def get_history(days: int = 7):
