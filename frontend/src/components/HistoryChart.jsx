@@ -10,53 +10,64 @@ export default function HistoryChart() {
   const [loading, setLoading] = useState(true)
 
   const dateRangeOptions = [
-    { value: 'week', label: 'Last 7 Days' },
-    { value: 'weeks', label: 'Last 14 Days' },
-    { value: 'weeks3', label: 'Last 21 Days' },
-    { value: 'month', label: 'Last 30 Days' }
+    { value: 'week', label: 'Last 7 Days', days: 7 },
+    { value: 'weeks', label: 'Last 14 Days', days: 14 },
+    { value: 'weeks3', label: 'Last 21 Days', days: 21 },
+    { value: 'month', label: 'Last 30 Days', days: 30 }
   ]
 
   const nutritionOptions = [
-    { value: 'protein', label: '🥩 Protein', color: '#8884d8' },
-    { value: 'carbs', label: '🍞 Carbs', color: '#ffaa44' },
-    { value: 'cholesterol', label: '🍳 Cholesterol', color: '#ff4444' },
-    { value: 'iron', label: '🩸 Iron', color: '#82ca9d' },
-    { value: 'calories', label: '🔥 Calories', color: '#4caf50' },
-    { value: 'cost', label: '💰 Cost', color: '#ff6b6b' }
+    { value: 'protein', label: '🥩 Protein', color: '#8884d8', unit: 'g' },
+    { value: 'carbs', label: '🍞 Carbs', color: '#ffaa44', unit: 'g' },
+    { value: 'cholesterol', label: '🍳 Cholesterol', color: '#ff4444', unit: 'mg' },
+    { value: 'iron', label: '🩸 Iron', color: '#82ca9d', unit: 'mg' },
+    { value: 'calories', label: '🔥 Calories', color: '#4caf50', unit: 'cal' },
+    { value: 'cost', label: '💰 Cost', color: '#ff6b6b', unit: '₹' }
   ]
 
   useEffect(() => {
-    fetchAnalysis()
+    fetchHistory()
   }, [dateRange])
 
-  const fetchAnalysis = async () => {
+  const fetchHistory = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/nutrition/analysis?date_range=${dateRange}`)
+      const response = await fetch(`${API_BASE_URL}/history?days=${dateRangeOptions.find(o => o.value === dateRange)?.days || 7}`)
       const data = await response.json()
-      setAnalysis(data)
       
-      const chartData = data.daily_data.dates.map((date, index) => ({
-        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        protein: data.daily_data.protein[index],
-        carbs: data.daily_data.carbs[index],
-        cholesterol: data.daily_data.cholesterol[index],
-        iron: data.daily_data.iron[index],
-        calories: data.daily_data.calories[index] || 0,
-        cost: data.daily_data.cost?.[index] || 0
-      }))
-      setChartData(chartData)
+      setChartData(data)
+      
+      // Calculate analysis
+      if (data.length > 0) {
+        const metricData = data.map(d => d[nutritionMetric] || 0)
+        const avg = metricData.reduce((a, b) => a + b, 0) / metricData.length
+        const max = Math.max(...metricData)
+        const min = Math.min(...metricData)
+        const total = metricData.reduce((a, b) => a + b, 0)
+        
+        setAnalysis({ avg, max, min, total })
+      }
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error fetching history:', error)
     } finally {
       setLoading(false)
     }
   }
 
+  const selectedMetric = nutritionOptions.find(m => m.value === nutritionMetric)
+
   if (loading) return <div className="loading">Loading chart...</div>
 
-  const selectedMetric = nutritionOptions.find(m => m.value === nutritionMetric)
-  const metricData = analysis?.[nutritionMetric]
+  if (chartData.length === 0) {
+    return (
+      <div className="history-chart">
+        <h2>📈 Nutrition Progress</h2>
+        <div className="empty-chart">
+          <p>No data yet. Start logging your meals!</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="history-chart">
@@ -64,53 +75,65 @@ export default function HistoryChart() {
       
       <div className="chart-controls">
         <div className="control-group">
-          <label>Date Range:</label>
+          <label>📅 Date Range</label>
           <select value={dateRange} onChange={(e) => setDateRange(e.target.value)}>
-            {dateRangeOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            {dateRangeOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </select>
         </div>
         
         <div className="control-group">
-          <label>Nutrition:</label>
+          <label>🥗 Nutrition</label>
           <select value={nutritionMetric} onChange={(e) => setNutritionMetric(e.target.value)}>
-            {nutritionOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            {nutritionOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
           </select>
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={chartData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="date" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey={nutritionMetric} stroke={selectedMetric?.color} name={selectedMetric?.label} strokeWidth={2} />
-        </LineChart>
-      </ResponsiveContainer>
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+            <XAxis dataKey="date" stroke="#666" />
+            <YAxis stroke="#666" />
+            <Tooltip 
+              contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+              formatter={(value) => [`${value} ${selectedMetric?.unit || ''}`, selectedMetric?.label]}
+            />
+            <Legend />
+            <Bar 
+              dataKey={nutritionMetric} 
+              fill={selectedMetric?.color} 
+              name={selectedMetric?.label}
+              radius={[8, 8, 0, 0]}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
 
-      {metricData && (
+      {analysis && (
         <div className="insights">
-          <h3>📊 Analysis</h3>
+          <h3>📊 Summary Analysis</h3>
           <div className="insight-stats">
-            <div className="insight">
-              <strong>Average {selectedMetric?.label}:</strong> {metricData.average.toFixed(1)}
+            <div className="insight-card">
+              <div className="insight-value">{analysis.avg.toFixed(1)}</div>
+              <div className="insight-label">Average {selectedMetric?.label}</div>
             </div>
-            {metricData.goal && (
-              <div className="insight">
-                <strong>Goal:</strong> {metricData.goal}
-              </div>
-            )}
-            {metricData.goal_hit_percentage && (
-              <div className="insight">
-                <strong>Goal Met:</strong> {metricData.goal_hit_percentage.toFixed(0)}% of days
-              </div>
-            )}
-            {metricData.within_limit_percentage && (
-              <div className="insight">
-                <strong>Within Limit:</strong> {metricData.within_limit_percentage.toFixed(0)}% of days
-              </div>
-            )}
+            <div className="insight-card">
+              <div className="insight-value">{analysis.max.toFixed(1)}</div>
+              <div className="insight-label">Highest Day</div>
+            </div>
+            <div className="insight-card">
+              <div className="insight-value">{analysis.min.toFixed(1)}</div>
+              <div className="insight-label">Lowest Day</div>
+            </div>
+            <div className="insight-card">
+              <div className="insight-value">{analysis.total.toFixed(1)}</div>
+              <div className="insight-label">Total {selectedMetric?.label}</div>
+            </div>
           </div>
         </div>
       )}
