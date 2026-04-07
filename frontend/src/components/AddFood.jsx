@@ -4,10 +4,14 @@ import { API_BASE_URL } from '../services/api'
 export default function AddFood() {
   const [formData, setFormData] = useState({
     name: '',
+    protein: '',
+    carbs: '',
+    cholesterol: '',
+    iron: '',
+    calories: '',
     cost: '',
     unit: 'serving'
   })
-  const [predictedNutrition, setPredictedNutrition] = useState(null)
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -23,71 +27,178 @@ export default function AddFood() {
       return
     }
     
-    const cost = parseFloat(formData.cost)
-    if (isNaN(cost)) {
+    if (!formData.cost) {
       setMessage('❌ Please enter cost')
       return
     }
     
     setLoading(true)
+    
     try {
-      const url = `${API_BASE_URL}/food/add?name=${encodeURIComponent(formData.name)}&cost=${cost}&unit=${encodeURIComponent(formData.unit)}`
-      const response = await fetch(url, { method: 'POST' })
+      const params = new URLSearchParams({
+        name: formData.name,
+        cost: parseFloat(formData.cost),
+        protein: parseFloat(formData.protein) || 0,
+        carbs: parseFloat(formData.carbs) || 0,
+        cholesterol: parseFloat(formData.cholesterol) || 0,
+        iron: parseFloat(formData.iron) || 0,
+        calories: parseFloat(formData.calories) || 0,
+        unit: formData.unit
+      })
+      
+      const response = await fetch(`${API_BASE_URL}/food/add?${params}`, {
+        method: 'POST'
+      })
+      
       const data = await response.json()
       
       if (data.success) {
-        setPredictedNutrition(data.nutrition_predicted)
-        setMessage(`✅ Added "${formData.name}"! AI predicted nutrition values.`)
-        setFormData({ name: '', cost: '', unit: 'serving' })
-        setTimeout(() => setMessage(''), 4000)
+        setMessage(`✅ Added "${formData.name}" to your foods!`)
+        setFormData({
+          name: '',
+          protein: '',
+          carbs: '',
+          cholesterol: '',
+          iron: '',
+          calories: '',
+          cost: '',
+          unit: 'serving'
+        })
+        setTimeout(() => setMessage(''), 3000)
       } else {
-        setMessage('❌ Failed to add food')
+        setMessage(`❌ ${data.detail || 'Failed to add food'}`)
       }
     } catch (error) {
+      console.error('Error:', error)
       setMessage('❌ Error connecting to server')
-    } finally {
-      setLoading(false)
     }
+    
+    setLoading(false)
   }
 
   return (
     <div className="add-food">
-      <h2>➕ Add New Food</h2>
+      <h2>➕ Add Custom Food</h2>
+      <p className="info-text">Add your own foods with their nutrition values. They will appear in your food list for logging.</p>
+      
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label>Food Name *</label>
-          <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g., Homemade Chicken Curry" required />
+          <input 
+            type="text" 
+            name="name" 
+            value={formData.name}
+            onChange={handleChange}
+            placeholder="e.g., Homemade Chicken Curry, Protein Shake"
+            required
+          />
         </div>
 
         <div className="form-row">
           <div className="form-group">
-            <label>Cost (₹) *</label>
-            <input type="number" name="cost" value={formData.cost} onChange={handleChange} step="0.01" placeholder="e.g., 150" required />
+            <label>Protein (g)</label>
+            <input 
+              type="number" 
+              name="protein" 
+              value={formData.protein}
+              onChange={handleChange}
+              step="0.1"
+              placeholder="e.g., 25"
+            />
           </div>
+
           <div className="form-group">
-            <label>Serving Unit</label>
-            <input type="text" name="unit" value={formData.unit} onChange={handleChange} placeholder="e.g., plate, 100g" />
+            <label>Carbs (g)</label>
+            <input 
+              type="number" 
+              name="carbs" 
+              value={formData.carbs}
+              onChange={handleChange}
+              step="0.1"
+              placeholder="e.g., 30"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Cholesterol (mg)</label>
+            <input 
+              type="number" 
+              name="cholesterol" 
+              value={formData.cholesterol}
+              onChange={handleChange}
+              step="1"
+              placeholder="e.g., 80"
+            />
           </div>
         </div>
 
-        <button type="submit" disabled={loading}>{loading ? 'AI Analyzing...' : '➕ Add Food'}</button>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Iron (mg)</label>
+            <input 
+              type="number" 
+              name="iron" 
+              value={formData.iron}
+              onChange={handleChange}
+              step="0.1"
+              placeholder="e.g., 2.5"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Calories</label>
+            <input 
+              type="number" 
+              name="calories" 
+              value={formData.calories}
+              onChange={handleChange}
+              step="1"
+              placeholder="e.g., 250"
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Cost (₹) *</label>
+            <input 
+              type="number" 
+              name="cost" 
+              value={formData.cost}
+              onChange={handleChange}
+              step="0.01"
+              placeholder="e.g., 150"
+              required
+            />
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label>Serving Unit</label>
+          <input 
+            type="text" 
+            name="unit" 
+            value={formData.unit}
+            onChange={handleChange}
+            placeholder="e.g., plate, 100g, cup"
+          />
+          <small>How you measure this food (serving, 100g, cup, etc.)</small>
+        </div>
+
+        <button type="submit" disabled={loading}>
+          {loading ? 'Adding...' : '➕ Add to My Foods'}
+        </button>
       </form>
 
-      {predictedNutrition && (
-        <div className="predicted-nutrition">
-          <h3>🤖 AI Predicted Nutrition (per serving)</h3>
-          <div className="nutrition-grid">
-            <div>🥩 Protein: {predictedNutrition.protein || 0}g</div>
-            <div>🍞 Carbs: {predictedNutrition.carbs || 0}g</div>
-            <div>🍳 Cholesterol: {predictedNutrition.cholesterol || 0}mg</div>
-            <div>🩸 Iron: {predictedNutrition.iron || 0}mg</div>
-            <div>🔥 Calories: {predictedNutrition.calories || 0}</div>
-          </div>
-          <small>You can edit these values later by re-adding the food</small>
-        </div>
-      )}
-
       {message && <div className={`message ${message.includes('✅') ? 'success' : 'error'}`}>{message}</div>}
+      
+      <div className="tips">
+        <h4>💡 Tips:</h4>
+        <ul>
+          <li>Check nutritional labels on packaged foods</li>
+          <li>For homemade food, sum up ingredients and divide by servings</li>
+          <li>Once added, you can log this food from the "Log Food" tab</li>
+          <li>You can add as many foods as you want - they're all saved to your personal database</li>
+        </ul>
+      </div>
     </div>
   )
 }
