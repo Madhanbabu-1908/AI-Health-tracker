@@ -51,7 +51,7 @@ function App() {
     return (
       <div className="app">
         <header>
-          <h1>🏋️ Madhan Health Tracker</h1>
+          <h1>🏋️ AI Health Tracker</h1>
         </header>
         <div className="content">
           <div className="onboarding">
@@ -71,7 +71,7 @@ function App() {
   return (
     <div className="app">
       <header>
-        <h1>🏋️ Madhan Health Tracker</h1>
+        <h1>🏋️ AI Health Tracker</h1>
         <p>👤 {profile.nickname} • BMI: {profile.bmi?.toFixed(1)} • Goal: 100g protein</p>
       </header>
 
