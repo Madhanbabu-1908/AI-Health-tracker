@@ -149,7 +149,7 @@ function App() {
     return (
       <div className="app">
         <header>
-          <h1>🏋️ Madhan Health Tracker</h1>
+          <h1>🏋️ AI Health Tracker</h1>
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
@@ -164,7 +164,7 @@ function App() {
     return (
       <div className="app">
         <header>
-          <h1>🏋️ Madhan Health Tracker</h1>
+          <h1>🏋️ AI Health Tracker</h1>
           <p>Personalized Nutrition Coach</p>
         </header>
         <div className="content">
