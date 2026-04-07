@@ -14,11 +14,11 @@ class HealthGoal(str, Enum):
     INCREASE_IRON = "increase_iron"
 
 class ActivityLevel(str, Enum):
-    SEDENTARY = "sedentary"      # Little or no exercise
-    LIGHT = "light"               # Exercise 1-3 times/week
-    MODERATE = "moderate"         # Exercise 3-5 times/week
-    ACTIVE = "active"             # Exercise 6-7 times/week
-    VERY_ACTIVE = "very_active"   # Hard exercise daily/physical job
+    SEDENTARY = "sedentary"
+    LIGHT = "light"
+    MODERATE = "moderate"
+    ACTIVE = "active"
+    VERY_ACTIVE = "very_active"
 
 # ========== User Models ==========
 
@@ -40,7 +40,7 @@ class UserGoals(BaseModel):
     activity_level: ActivityLevel
     target_weight: Optional[float] = None
     target_date: Optional[str] = None
-    weekly_weight_change: float = 0.5  # kg per week (safe rate)
+    weekly_weight_change: float = 0.5
 
 # ========== Nutrition Models ==========
 
@@ -82,13 +82,6 @@ class FoodItem(BaseModel):
     default_unit: str = "serving"
     usage_count: int = 0
     created_at: datetime = datetime.now()
-
-class NutritionGoal(BaseModel):
-    protein_goal: float = 100
-    cholesterol_limit: float = 300
-    calorie_goal: float = 2500
-    carb_limit: float = 300
-    iron_goal: float = 15
 
 class AIRequest(BaseModel):
     query: str
