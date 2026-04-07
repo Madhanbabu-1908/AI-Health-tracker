@@ -1,219 +1,252 @@
 import math
-from typing import Dict, Tuple, List
+from typing import Dict, List
 from .models import UserGoals, HealthGoal, ActivityLevel, PersonalizedNutritionGoals
 
 class GoalCalculator:
-    """Calculates personalized nutrition goals based on user's health objectives"""
+    """Dynamically calculates ALL nutrition goals based on user profile - NO HARDCODING"""
     
-    # Activity multipliers for BMR (Basal Metabolic Rate)
     ACTIVITY_MULTIPLIERS = {
-        ActivityLevel.SEDENTARY: 1.2,
-        ActivityLevel.LIGHT: 1.375,
-        ActivityLevel.MODERATE: 1.55,
-        ActivityLevel.ACTIVE: 1.725,
-        ActivityLevel.VERY_ACTIVE: 1.9
-    }
-    
-    # Protein multipliers (g per kg body weight) - CORRECTED VALUES
-    PROTEIN_MULTIPLIERS = {
-        HealthGoal.LOSE_WEIGHT: 1.6,      # Higher protein to preserve muscle (112g for 70kg)
-        HealthGoal.MAINTAIN_WEIGHT: 1.2,   # Standard maintenance (84g for 70kg)
-        HealthGoal.GAIN_MUSCLE: 1.8,       # Higher for muscle growth (126g for 70kg)
-        HealthGoal.IMPROVE_ENDURANCE: 1.4, # Moderate for endurance (98g for 70kg)
-        HealthGoal.LOWER_CHOLESTEROL: 1.2, # Standard with plant focus (84g for 70kg)
-        HealthGoal.INCREASE_IRON: 1.3      # Slightly higher (91g for 70kg)
-    }
-    
-    # Carb multipliers (g per kg body weight) - CORRECTED
-    CARB_MULTIPLIERS = {
-        HealthGoal.LOSE_WEIGHT: 3.0,       # 210g for 70kg
-        HealthGoal.MAINTAIN_WEIGHT: 4.0,   # 280g for 70kg
-        HealthGoal.GAIN_MUSCLE: 5.0,       # 350g for 70kg
-        HealthGoal.IMPROVE_ENDURANCE: 6.0, # 420g for 70kg
-        HealthGoal.LOWER_CHOLESTEROL: 3.5, # 245g for 70kg
-        HealthGoal.INCREASE_IRON: 4.0      # 280g for 70kg
-    }
-    
-    # Fat multipliers (g per kg body weight) - CORRECTED
-    FAT_MULTIPLIERS = {
-        HealthGoal.LOSE_WEIGHT: 0.8,       # 56g for 70kg
-        HealthGoal.MAINTAIN_WEIGHT: 1.0,   # 70g for 70kg
-        HealthGoal.GAIN_MUSCLE: 1.2,       # 84g for 70kg
-        HealthGoal.IMPROVE_ENDURANCE: 1.1, # 77g for 70kg
-        HealthGoal.LOWER_CHOLESTEROL: 0.7, # 49g for 70kg - Lower saturated fat
-        HealthGoal.INCREASE_IRON: 1.0      # 70g for 70kg
+        "sedentary": 1.2,
+        "light": 1.375,
+        "moderate": 1.55,
+        "active": 1.725,
+        "very_active": 1.9
     }
     
     @staticmethod
-    def calculate_bmr(weight_kg: float, height_cm: float, age: int, gender: str = "male") -> float:
+    def calculate_bmr(weight_kg: float, height_cm: float, age: int, gender: str) -> float:
         """Calculate Basal Metabolic Rate using Mifflin-St Jeor equation"""
-        if gender.lower() == "female":
+        if gender == "female":
             return (10 * weight_kg) + (6.25 * height_cm) - (5 * age) - 161
         else:
             return (10 * weight_kg) + (6.25 * height_cm) - (5 * age) + 5
     
     @staticmethod
-    def calculate_tdee(bmr: float, activity_level: ActivityLevel) -> float:
+    def calculate_tdee(bmr: float, activity_level: str) -> float:
         """Calculate Total Daily Energy Expenditure"""
-        return bmr * GoalCalculator.ACTIVITY_MULTIPLIERS[activity_level]
+        return bmr * GoalCalculator.ACTIVITY_MULTIPLIERS.get(activity_level, 1.55)
     
     @staticmethod
-    def calculate_adjusted_calories(tdee: float, goal: HealthGoal, target_weight_change: float = 0.5) -> float:
-        """Adjust calories based on health goal"""
-        # 1 kg of body fat ≈ 7700 calories
-        weekly_calorie_adjustment = target_weight_change * 7700
-        daily_adjustment = weekly_calorie_adjustment / 7
-        
-        if goal == HealthGoal.LOSE_WEIGHT:
-            return max(tdee - daily_adjustment, 1500)  # Never go below 1500 calories for men, 1200 for women
-        elif goal == HealthGoal.GAIN_MUSCLE:
-            return tdee + daily_adjustment
+    def calculate_adjusted_calories(tdee: float, primary_goal: str, weight_kg: float) -> float:
+        """Dynamically adjust calories based on goal"""
+        if primary_goal == "lose_weight":
+            # 15% calorie deficit (safe and effective)
+            return max(round(tdee * 0.85, 0), 1500)  # Never go below 1500
+        elif primary_goal == "gain_muscle":
+            # 10% calorie surplus
+            return round(tdee * 1.10, 0)
         else:
-            return tdee
+            return round(tdee, 0)
     
     @staticmethod
-    def _get_bmi_category(bmi: float) -> str:
-        """Get BMI category description"""
-        if bmi < 18.5:
-            return "Underweight"
-        elif bmi < 25:
-            return "Normal weight"
-        elif bmi < 30:
-            return "Overweight"
-        else:
-            return "Obese"
-    
-    @staticmethod
-    def calculate_nutrition_goals(
-        weight_kg: float,
-        height_cm: float,
-        age: int,
-        gender: str,
-        user_goals: UserGoals
-    ) -> PersonalizedNutritionGoals:
-        """Calculate complete personalized nutrition goals"""
+    def calculate_protein_goal(weight_kg: float, primary_goal: str, activity_level: str) -> float:
+        """Dynamically calculate protein based on goal and activity"""
+        # Base protein: 1.2g per kg
+        base_protein = weight_kg * 1.2
         
-        # Validate weight - should be in kg (typically 40-200kg range)
-        if weight_kg < 20 or weight_kg > 300:
-            # If weight seems off (maybe in lbs), assume it's kg but flag
-            print(f"Warning: Weight {weight_kg}kg seems unusual")
+        # Goal multipliers
+        goal_multipliers = {
+            "lose_weight": 1.6,      # Higher protein to preserve muscle
+            "gain_muscle": 1.8,      # Higher for muscle growth
+            "improve_endurance": 1.5,
+            "lower_cholesterol": 1.2,
+            "increase_iron": 1.3,
+            "maintain_weight": 1.2
+        }
+        multiplier = goal_multipliers.get(primary_goal, 1.2)
+        
+        # Activity multipliers
+        activity_multipliers = {
+            "sedentary": 1.0,
+            "light": 1.1,
+            "moderate": 1.2,
+            "active": 1.3,
+            "very_active": 1.4
+        }
+        activity_mult = activity_multipliers.get(activity_level, 1.0)
+        
+        return round(base_protein * multiplier * activity_mult, 0)
+    
+    @staticmethod
+    def calculate_carb_goal(calorie_goal: float, primary_goal: str, activity_level: str) -> float:
+        """Dynamically calculate carbs based on calorie goal (4 cal per gram)"""
+        # Carb percentage based on goal
+        carb_percentages = {
+            "improve_endurance": 0.60,  # 60% for endurance athletes
+            "gain_muscle": 0.50,        # 50% for muscle gain
+            "lose_weight": 0.40,        # 40% for weight loss
+            "lower_cholesterol": 0.45,
+            "increase_iron": 0.50,
+            "maintain_weight": 0.50
+        }
+        percentage = carb_percentages.get(primary_goal, 0.50)
+        
+        # Activity adjustment
+        activity_adjustments = {
+            "sedentary": 0.9,
+            "light": 1.0,
+            "moderate": 1.05,
+            "active": 1.1,
+            "very_active": 1.15
+        }
+        activity_adj = activity_adjustments.get(activity_level, 1.0)
+        
+        carbs_calories = calorie_goal * percentage * activity_adj
+        return round(carbs_calories / 4, 0)  # 4 calories per gram of carb
+    
+    @staticmethod
+    def calculate_fat_goal(calorie_goal: float, primary_goal: str) -> float:
+        """Dynamically calculate fat based on calorie goal (9 cal per gram)"""
+        # Fat percentage based on goal
+        fat_percentages = {
+            "lower_cholesterol": 0.20,   # Lower fat for cholesterol
+            "lose_weight": 0.25,
+            "gain_muscle": 0.30,
+            "improve_endurance": 0.25,
+            "increase_iron": 0.25,
+            "maintain_weight": 0.25
+        }
+        percentage = fat_percentages.get(primary_goal, 0.25)
+        
+        fat_calories = calorie_goal * percentage
+        return round(fat_calories / 9, 0)  # 9 calories per gram of fat
+    
+    @staticmethod
+    def calculate_fiber_goal(weight_kg: float, calorie_goal: float) -> float:
+        """Dynamically calculate fiber: 14g per 1000 calories or 0.3g per kg (whichever is higher)"""
+        fiber_by_calories = (calorie_goal / 1000) * 14
+        fiber_by_weight = weight_kg * 0.3
+        return round(max(fiber_by_calories, fiber_by_weight, 25), 0)
+    
+    @staticmethod
+    def calculate_cholesterol_limit(primary_goal: str, weight_kg: float) -> float:
+        """Dynamically set cholesterol limit based on goals"""
+        if primary_goal == "lower_cholesterol":
+            return 200  # Stricter limit for heart health
+        else:
+            return 300  # Standard limit
+    
+    @staticmethod
+    def calculate_iron_goal(gender: str, weight_kg: float, primary_goal: str) -> float:
+        """Dynamically calculate iron needs based on gender, weight, and goals"""
+        # Base iron: 1mg per 10kg
+        base_iron = weight_kg / 10
+        
+        # Gender adjustment
+        if gender == "female":
+            base_iron = base_iron * 1.5  # Women need more iron due to menstruation
+        
+        # Goal adjustment
+        if primary_goal == "increase_iron":
+            base_iron = base_iron * 1.3
+        
+        # Ensure minimum values
+        min_iron = 12 if gender == "female" else 8
+        return round(max(base_iron, min_iron), 0)
+    
+    @staticmethod
+    def calculate_calcium_goal(age: int, gender: str) -> float:
+        """Dynamically calculate calcium needs based on age and gender"""
+        if age < 50:
+            return 1000
+        elif gender == "female" and age >= 50:
+            return 1200  # Post-menopausal women need more calcium
+        else:
+            return 1000
+    
+    @staticmethod
+    def calculate_vitamin_d_goal(age: int, activity_level: str) -> float:
+        """Dynamically calculate Vitamin D needs based on age and activity"""
+        base = 600
+        if age > 70:
+            base = 800
+        if activity_level in ["active", "very_active"]:
+            base = base + 200  # Active people may need more
+        return base
+    
+    @staticmethod
+    def calculate_water_goal(weight_kg: float, activity_level: str, calorie_goal: float) -> float:
+        """Dynamically calculate water needs (30-40ml per kg)"""
+        base_water = weight_kg * 0.033  # 33ml per kg
+        
+        # Activity adjustment
+        activity_multipliers = {
+            "sedentary": 1.0,
+            "light": 1.1,
+            "moderate": 1.2,
+            "active": 1.3,
+            "very_active": 1.4
+        }
+        activity_mult = activity_multipliers.get(activity_level, 1.0)
+        
+        return round(base_water * activity_mult, 1)
+    
+    @staticmethod
+    def generate_explanation(primary_goal: str, weight: float, calories: float, 
+                            protein: float, carbs: float, fat: float, fiber: float) -> str:
+        """Generate personalized explanation based on actual calculated values"""
+        
+        explanations = {
+            "lose_weight": f"Based on your weight loss goal, we've created a 15% calorie deficit ({calories:.0f} calories/day). Your protein is set at {protein:.0f}g to preserve muscle mass while losing fat. Carbs at {carbs:.0f}g and fat at {fat:.0f}g provide balanced energy.",
+            
+            "gain_muscle": f"To build muscle, we've added a 10% calorie surplus ({calories:.0f} calories/day). High protein ({protein:.0f}g) supports muscle repair and growth. Carbs ({carbs:.0f}g) fuel your workouts, and fats ({fat:.0f}g) support hormone production.",
+            
+            "maintain_weight": f"Your maintenance calories are {calories:.0f} calories/day with balanced macros: {protein:.0f}g protein, {carbs:.0f}g carbs, {fat:.0f}g fat. This supports your current weight and activity level.",
+            
+            "improve_endurance": f"Prioritizing carbohydrates ({carbs:.0f}g) to fuel your endurance training, with {protein:.0f}g protein for muscle recovery. Total calories: {calories:.0f}.",
+            
+            "lower_cholesterol": f"Lower fat intake ({fat:.0f}g) and increased fiber ({fiber:.0f}g) to support heart health. Protein at {protein:.0f}g helps maintain muscle.",
+            
+            "increase_iron": f"Elevated iron target to support healthy blood cells. Balanced macros: {protein:.0f}g protein, {carbs:.0f}g carbs, {fat:.0f}g fat."
+        }
+        
+        return explanations.get(primary_goal, f"Personalized plan: {calories:.0f} calories, {protein:.0f}g protein, {carbs:.0f}g carbs, {fat:.0f}g fat.")
+    
+    @staticmethod
+    def calculate_all_goals(profile: dict, user_goals: dict) -> PersonalizedNutritionGoals:
+        """Calculate ALL nutrition goals dynamically from profile - NO HARDCODING"""
+        
+        # Extract profile data
+        weight = profile.get("weight", 70)
+        height = profile.get("height", 170)
+        age = profile.get("age", 30)
+        gender = profile.get("gender", "male")
+        primary_goal = user_goals.get("primary_goal", "maintain_weight")
+        activity_level = user_goals.get("activity_level", "moderate")
         
         # Calculate BMR and TDEE
-        bmr = GoalCalculator.calculate_bmr(weight_kg, height_cm, age, gender)
-        tdee = GoalCalculator.calculate_tdee(bmr, user_goals.activity_level)
-        calories = GoalCalculator.calculate_adjusted_calories(
-            tdee, 
-            user_goals.primary_goal,
-            user_goals.weekly_weight_change if user_goals.primary_goal in [HealthGoal.LOSE_WEIGHT, HealthGoal.GAIN_MUSCLE] else 0
-        )
+        bmr = GoalCalculator.calculate_bmr(weight, height, age, gender)
+        tdee = GoalCalculator.calculate_tdee(bmr, activity_level)
+        calorie_goal = GoalCalculator.calculate_adjusted_calories(tdee, primary_goal, weight)
         
-        # Calculate macros based on goals - USING KG CORRECTLY
-        protein_mult = GoalCalculator.PROTEIN_MULTIPLIERS[user_goals.primary_goal]
-        carb_mult = GoalCalculator.CARB_MULTIPLIERS[user_goals.primary_goal]
-        fat_mult = GoalCalculator.FAT_MULTIPLIERS[user_goals.primary_goal]
+        # Calculate all macros
+        protein_goal = GoalCalculator.calculate_protein_goal(weight, primary_goal, activity_level)
+        carb_goal = GoalCalculator.calculate_carb_goal(calorie_goal, primary_goal, activity_level)
+        fat_goal = GoalCalculator.calculate_fat_goal(calorie_goal, primary_goal)
         
-        protein_goal = weight_kg * protein_mult
-        carb_goal = weight_kg * carb_mult
-        fat_goal = weight_kg * fat_mult
-        
-        # Safety caps - never exceed these maximums
-        max_protein = weight_kg * 2.2  # Absolute max 2.2g per kg
-        max_carbs = weight_kg * 8.0    # Absolute max 8g per kg
-        max_fat = weight_kg * 1.5      # Absolute max 1.5g per kg
-        
-        protein_goal = min(protein_goal, max_protein)
-        carb_goal = min(carb_goal, max_carbs)
-        fat_goal = min(fat_goal, max_fat)
-        
-        # Adjust for secondary goals
-        cholesterol_limit = 300
-        if HealthGoal.LOWER_CHOLESTEROL in user_goals.secondary_goals:
-            fat_goal = min(fat_goal, weight_kg * 0.7)  # Lower fat for cholesterol
-            cholesterol_limit = 200  # Stricter limit
-        
-        # Iron goals based on gender and secondary goals
-        if HealthGoal.INCREASE_IRON in user_goals.secondary_goals:
-            iron_goal = 18 if gender.lower() == "female" else 12
-        else:
-            iron_goal = 15 if gender.lower() == "female" else 10
-        
-        # Calculate fiber (0.3g per kg, minimum 25g, maximum 40g)
-        fiber_goal = min(max(weight_kg * 0.3, 25), 40)
-        
-        # Calculate water (33ml per kg, minimum 2L, maximum 4L)
-        water_goal = min(max(weight_kg * 0.033, 2.0), 4.0)
+        # Calculate micronutrients
+        fiber_goal = GoalCalculator.calculate_fiber_goal(weight, calorie_goal)
+        cholesterol_limit = GoalCalculator.calculate_cholesterol_limit(primary_goal, weight)
+        iron_goal = GoalCalculator.calculate_iron_goal(gender, weight, primary_goal)
+        calcium_goal = GoalCalculator.calculate_calcium_goal(age, gender)
+        vitamin_d_goal = GoalCalculator.calculate_vitamin_d_goal(age, activity_level)
+        water_goal = GoalCalculator.calculate_water_goal(weight, activity_level, calorie_goal)
         
         # Generate explanation
-        explanation = GoalCalculator._generate_explanation(
-            user_goals.primary_goal,
-            user_goals.secondary_goals,
-            weight_kg,
-            calories,
-            protein_goal,
-            carb_goal,
-            fat_goal
+        explanation = GoalCalculator.generate_explanation(
+            primary_goal, weight, calorie_goal, protein_goal, carb_goal, fat_goal, fiber_goal
         )
         
         return PersonalizedNutritionGoals(
-            protein_goal=round(protein_goal, 1),
-            calorie_goal=round(calories, 0),
-            carb_goal=round(carb_goal, 1),
-            fat_goal=round(fat_goal, 1),
-            fiber_goal=round(fiber_goal, 1),
+            protein_goal=protein_goal,
+            calorie_goal=calorie_goal,
+            carb_goal=carb_goal,
+            fat_goal=fat_goal,
+            fiber_goal=fiber_goal,
             cholesterol_limit=cholesterol_limit,
-            iron_goal=round(iron_goal, 1),
-            calcium_goal=1000,
-            vitamin_d_goal=600,
-            water_goal=round(water_goal, 1),
+            iron_goal=iron_goal,
+            calcium_goal=calcium_goal,
+            vitamin_d_goal=vitamin_d_goal,
+            water_goal=water_goal,
             explanation=explanation
         )
-    
-    @staticmethod
-    def _generate_explanation(primary_goal: HealthGoal, secondary_goals: List[HealthGoal], 
-                              weight: float, calories: float, protein: float, carbs: float, fat: float) -> str:
-        """Generate human-readable explanation of goals"""
-        
-        goal_messages = {
-            HealthGoal.LOSE_WEIGHT: f"Based on your weight loss goal, we've created a calorie deficit. This should help you lose about 0.5kg per week while preserving muscle mass.",
-            HealthGoal.MAINTAIN_WEIGHT: f"Your calorie target maintains your current weight while supporting your activity level.",
-            HealthGoal.GAIN_MUSCLE: f"To build muscle, we've added a slight calorie surplus. Combined with adequate protein ({protein:.0f}g), this supports muscle growth.",
-            HealthGoal.IMPROVE_ENDURANCE: f"For endurance training, we've prioritized carbohydrates ({carbs:.0f}g) to fuel your workouts while maintaining adequate protein for recovery.",
-            HealthGoal.LOWER_CHOLESTEROL: f"Your goals focus on heart health with lower fat limits ({fat:.0f}g) and increased fiber from whole grains and vegetables.",
-            HealthGoal.INCREASE_IRON: f"We've increased your iron target to support healthy blood cells. Pair iron-rich foods with vitamin C for better absorption."
-        }
-        
-        base = goal_messages.get(primary_goal, "Your personalized nutrition plan is based on your health goals.")
-        
-        # Add secondary goal notes
-        secondary_note = ""
-        if HealthGoal.LOWER_CHOLESTEROL in secondary_goals:
-            secondary_note = " To lower cholesterol, focus on unsaturated fats and avoid trans fats."
-        if HealthGoal.INCREASE_IRON in secondary_goals:
-            secondary_note += " For iron absorption, pair iron-rich foods with vitamin C (citrus fruits, bell peppers)."
-        
-        return f"{base}{secondary_note} Your daily targets: {calories:.0f} calories, {protein:.0f}g protein, {carbs:.0f}g carbs, {fat:.0f}g fat."
-    
-    @staticmethod
-    def get_recommended_ranges(weight_kg: float, goal: HealthGoal) -> Dict:
-        """Get recommended nutrition ranges for display"""
-        protein_mult = GoalCalculator.PROTEIN_MULTIPLIERS[goal]
-        carb_mult = GoalCalculator.CARB_MULTIPLIERS[goal]
-        fat_mult = GoalCalculator.FAT_MULTIPLIERS[goal]
-        
-        return {
-            "protein": {
-                "min": round(weight_kg * (protein_mult - 0.2), 1),
-                "max": round(weight_kg * (protein_mult + 0.2), 1),
-                "unit": "g"
-            },
-            "carbs": {
-                "min": round(weight_kg * (carb_mult - 0.5), 1),
-                "max": round(weight_kg * (carb_mult + 0.5), 1),
-                "unit": "g"
-            },
-            "fat": {
-                "min": round(weight_kg * (fat_mult - 0.2), 1),
-                "max": round(weight_kg * (fat_mult + 0.2), 1),
-                "unit": "g"
-            }
-        }
