@@ -11,18 +11,18 @@ class Database:
         self._init_files()
     
     def _init_files(self):
-        files = {
-            "profile.json": None,
-            "food_entries.json": {},
-            "food_items.json": {},
-            "nutrition_goals.json": {"protein_goal": 100, "cholesterol_limit": 300, "calorie_goal": 2500, "carb_limit": 300, "iron_goal": 15},
-            "ai_cache.json": {}
+    files = {
+        "profile.json": {"nickname": "", "height": 0, "weight": 0, "bmi": None, "created_at": "2026-04-07T00:00:00", "updated_at": "2026-04-07T00:00:00"},
+        "food_entries.json": {},
+        "food_items.json": {},
+        "nutrition_goals.json": {"protein_goal": 100, "cholesterol_limit": 300, "calorie_goal": 2500, "carb_limit": 300, "iron_goal": 15},
+        "ai_cache.json": {}
         }
         for filename, default_data in files.items():
             filepath = os.path.join(self.data_path, filename)
-            if not os.path.exists(filepath) and default_data is not None:
+            if not os.path.exists(filepath):
                 with open(filepath, 'w') as f:
-                    json.dump(default_data, f)
+                    json.dump(default_data, f, indent=2)
     
     def _read_json(self, filename):
         filepath = os.path.join(self.data_path, filename)
