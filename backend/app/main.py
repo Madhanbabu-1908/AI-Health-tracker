@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
+import uuid
 import re
 import httpx
 
@@ -100,9 +101,8 @@ def calculate_calorie_goal(weight_kg, height_cm, age, gender, activity_level, pr
 # ========== AI Web Search for Nutrition ==========
 
 async def search_nutrition_online(food_name: str) -> dict:
-    """Search the web for nutrition information using DuckDuckGo"""
+    """Search the web for nutrition information"""
     try:
-        # Use DuckDuckGo HTML search (free, no API key)
         search_url = f"https://html.duckduckgo.com/html/?q={food_name}+nutrition+facts+per+100g"
         
         headers = {
@@ -113,18 +113,17 @@ async def search_nutrition_online(food_name: str) -> dict:
             response = await client.get(search_url, headers=headers)
             
             if response.status_code == 200:
-                # Extract nutrition from search results
                 nutrition = extract_nutrition_from_text(response.text, food_name)
                 return nutrition
             else:
-                return get_default_nutrition(food_name)
+                return get_intelligent_defaults(food_name)
                 
     except Exception as e:
         print(f"Search error: {e}")
-        return get_default_nutrition(food_name)
+        return get_intelligent_defaults(food_name)
 
 def extract_nutrition_from_text(html_text: str, food_name: str) -> dict:
-    """Extract nutrition values from HTML text using regex"""
+    """Extract nutrition values from HTML text"""
     
     nutrition = {
         "protein": 0,
@@ -134,7 +133,6 @@ def extract_nutrition_from_text(html_text: str, food_name: str) -> dict:
         "calories": 0
     }
     
-    # Look for common nutrition patterns
     patterns = {
         "protein": r'protein[:\s]+(\d+(?:\.\d+)?)\s*g',
         "carbs": r'carbohydrates?[:\s]+(\d+(?:\.\d+)?)\s*g',
@@ -148,7 +146,6 @@ def extract_nutrition_from_text(html_text: str, food_name: str) -> dict:
         if match:
             nutrition[key] = float(match.group(1))
     
-    # If no values found, use intelligent defaults based on food type
     if nutrition["protein"] == 0 and nutrition["calories"] == 0:
         nutrition = get_intelligent_defaults(food_name)
     
@@ -158,41 +155,20 @@ def get_intelligent_defaults(food_name: str) -> dict:
     """Provide intelligent defaults based on food category"""
     food_lower = food_name.lower()
     
-    # Protein-rich foods
-    if any(word in food_lower for word in ["chicken", "beef", "mutton", "pork", "turkey", "fish", "prawn", "crab"]):
+    if any(word in food_lower for word in ["chicken", "beef", "mutton", "fish", "prawn"]):
         return {"protein": 25, "carbs": 0, "cholesterol": 70, "iron": 1.5, "calories": 200}
-    
-    # Egg-based
     elif "egg" in food_lower:
         return {"protein": 13, "carbs": 1, "cholesterol": 370, "iron": 1.8, "calories": 155}
-    
-    # Dairy
-    elif any(word in food_lower for word in ["milk", "paneer", "cheese", "yogurt", "curd", "butter"]):
+    elif any(word in food_lower for word in ["milk", "paneer", "cheese", "yogurt"]):
         return {"protein": 10, "carbs": 5, "cholesterol": 30, "iron": 0.2, "calories": 150}
-    
-    # Legumes
-    elif any(word in food_lower for word in ["dal", "lentil", "chickpea", "bean", "tofu", "soy"]):
+    elif any(word in food_lower for word in ["dal", "lentil", "chickpea", "bean", "tofu"]):
         return {"protein": 9, "carbs": 20, "cholesterol": 0, "iron": 2.5, "calories": 120}
-    
-    # Grains
-    elif any(word in food_lower for word in ["rice", "wheat", "bread", "roti", "chapati", "noodle", "pasta"]):
+    elif any(word in food_lower for word in ["rice", "bread", "roti", "chapati", "noodle"]):
         return {"protein": 3, "carbs": 25, "cholesterol": 0, "iron": 0.5, "calories": 130}
-    
-    # Vegetables
-    elif any(word in food_lower for word in ["spinach", "broccoli", "cauliflower", "carrot", "potato", "tomato"]):
-        return {"protein": 2, "carbs": 8, "cholesterol": 0, "iron": 1.0, "calories": 50}
-    
-    # Fruits
-    elif any(word in food_lower for word in ["apple", "banana", "orange", "mango", "grape", "berry"]):
-        return {"protein": 0.5, "carbs": 15, "cholesterol": 0, "iron": 0.3, "calories": 70}
-    
-    # Default
+    elif any(word in food_lower for word in ["biryani", "curry", "masala"]):
+        return {"protein": 12, "carbs": 30, "cholesterol": 40, "iron": 1.2, "calories": 250}
     else:
         return {"protein": 8, "carbs": 12, "cholesterol": 20, "iron": 1.0, "calories": 150}
-
-def get_default_nutrition(food_name: str) -> dict:
-    """Fallback default nutrition"""
-    return get_intelligent_defaults(food_name)
 
 # ========== API Endpoints ==========
 
@@ -217,13 +193,10 @@ async def setup_user_goals(request: Request):
             return {"success": False, "message": "Nickname is required"}
         
         if height < 50 or height > 250:
-            return {"success": False, "message": f"Height must be between 50cm and 250cm (got {height}cm)"}
+            return {"success": False, "message": f"Height must be between 50cm and 250cm"}
         
         if weight < 20 or weight > 300:
-            return {"success": False, "message": f"Weight must be between 20kg and 300kg (got {weight}kg)"}
-        
-        if age < 10 or age > 120:
-            return {"success": False, "message": f"Age must be between 10 and 120 (got {age})"}
+            return {"success": False, "message": f"Weight must be between 20kg and 300kg"}
         
         bmi = calculate_bmi(height, weight)
         protein_goal = calculate_protein_goal(weight, primary_goal)
@@ -268,7 +241,7 @@ async def setup_user_goals(request: Request):
             "nutrition_goals": nutrition_goals,
             "bmi": bmi,
             "bmi_category": bmi_category,
-            "message": f"Welcome {nickname}! Your BMI is {bmi} ({bmi_category}). Your daily protein goal is {protein_goal}g."
+            "message": f"Welcome {nickname}! Your BMI is {bmi} ({bmi_category})."
         }
         
     except Exception as e:
@@ -288,7 +261,6 @@ async def get_nutrition_goals():
 
 @app.delete("/reset-all-data")
 async def reset_all_data():
-    """Delete ALL user data"""
     try:
         with open(PROFILE_FILE, "w") as f:
             json.dump(None, f)
@@ -306,22 +278,18 @@ async def reset_all_data():
         with open(USER_FOODS_FILE, "w") as f:
             json.dump({}, f)
         
-        return {"success": True, "message": "All data has been reset successfully"}
+        return {"success": True, "message": "All data reset successfully"}
         
     except Exception as e:
         return {"success": False, "message": str(e)}
 
 @app.get("/ai/predict-nutrition")
 async def predict_nutrition(food_name: str):
-    """AI predicts nutrition values using web search"""
-    
-    # Search web for nutrition information
     nutrition = await search_nutrition_online(food_name)
-    
     return {
         "success": True,
         "nutrition": nutrition,
-        "message": f"AI predicted nutrition for {food_name} based on web search"
+        "message": f"AI predicted nutrition for {food_name}"
     }
 
 @app.get("/food/list")
@@ -342,7 +310,6 @@ async def add_food(
 ):
     foods = read_json(USER_FOODS_FILE)
     
-    import uuid
     food_id = str(uuid.uuid4())[:8]
     new_food = {
         "id": food_id,
@@ -423,10 +390,53 @@ async def get_today():
         }
     }
 
+@app.get("/history")
+async def get_history(days: int = 7):
+    entries = read_json(FOOD_ENTRIES_FILE)
+    result = []
+    
+    end_date = datetime.now()
+    
+    for i in range(days):
+        date = (end_date - timedelta(days=i)).strftime("%Y-%m-%d")
+        if date in entries:
+            day_total = {"date": date, "protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0}
+            for entry in entries[date]:
+                day_total["protein"] += entry.get("protein", 0)
+                day_total["carbs"] += entry.get("carbs", 0)
+                day_total["cholesterol"] += entry.get("cholesterol", 0)
+                day_total["iron"] += entry.get("iron", 0)
+                day_total["calories"] += entry.get("calories", 0)
+                day_total["cost"] += entry.get("cost", 0)
+            result.append(day_total)
+        else:
+            result.append({"date": date, "protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0})
+    
+    return result
+
 @app.post("/ai/chat")
 async def ai_chat(request: dict):
-    query = request.get("query", "")
-    return {"response": f"AI Coach: How can I help with '{query}'? Try adding foods first!"}
+    query = request.get("query", "").lower()
+    context = request.get("context", {})
+    profile = context.get("profile", {})
+    goals = context.get("goals", {})
+    
+    protein_goal = goals.get("protein_goal", 72)
+    
+    if "protein" in query:
+        response = f"Your daily protein goal is {protein_goal}g. Great sources include chicken (31g/100g), eggs (13g/egg), and lentils (9g/100g)."
+    elif "iron" in query:
+        response = "Iron-rich foods: Spinach (6mg/cup), Lentils (3mg/cup), Beef (2.5mg/100g). Pair with Vitamin C for better absorption!"
+    elif "cholesterol" in query:
+        response = "To lower cholesterol: Eat more oats, nuts, and plant-based proteins. Limit saturated fats from red meat and fried foods."
+    elif "meal" in query or "eat" in query:
+        response = f"High protein meal suggestion: Grilled chicken (31g protein) with chickpeas (15g) and quinoa (8g) = 54g total protein!"
+    elif "track" in query or "progress" in query:
+        response = "You're doing great! Keep logging your meals daily to see your progress. Consistency is key!"
+    else:
+        response = f"Hi {profile.get('nickname', 'there')}! I'm your AI health coach. Your daily protein goal is {protein_goal}g. Ask me about protein, iron, cholesterol, or meal ideas!"
+    
+    return {"response": response}
 
 if __name__ == "__main__":
     import uvicorn
