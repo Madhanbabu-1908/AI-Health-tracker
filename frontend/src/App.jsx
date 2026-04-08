@@ -33,15 +33,13 @@ export default function App() {
   const [tab, setTab]           = useState('dashboard')
   const [profile, setProfile]   = useState(null)
   const [goals, setGoals]       = useState(null)
-  const [ready, setReady]       = useState(false)   // checked backend
+  const [ready, setReady]       = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [connErr, setConnErr]   = useState(false)
 
   const sessionId = getSessionId()
   const { appliedTheme, toggleTheme } = useApp()
-
-  // ── Boot: try to fetch existing profile ──────────────────────────────────
 
   const boot = useCallback(async () => {
     try {
@@ -66,8 +64,6 @@ export default function App() {
 
   useEffect(() => { boot() }, [boot])
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
-
   const onOnboardComplete = (p, g) => {
     setProfile(p)
     setGoals(g)
@@ -83,20 +79,14 @@ export default function App() {
     setRefreshKey(k => k + 1)
   }
 
-  // ── Loading ───────────────────────────────────────────────────────────────
-
   if (!ready) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', gap: 16 }}>
-      <div style={{ width: 48, height: 48, background: 'linear-gradient(135deg, var(--accent), var(--accent-dim))', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-        🛡️
-      </div>
+      <img src="/favicon.svg" alt="Nalamudan" style={{ width: 48, height: 48 }} />
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, color: 'var(--text-secondary)' }}>
         Loading...
       </div>
     </div>
   )
-
-  // ── Connection error ──────────────────────────────────────────────────────
 
   if (connErr) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: 24, textAlign: 'center', gap: 16 }}>
@@ -113,25 +103,21 @@ export default function App() {
     </div>
   )
 
-  // ── Onboarding ────────────────────────────────────────────────────────────
-
   if (!loggedIn) return (
     <Onboarding sessionId={sessionId} onComplete={onOnboardComplete} />
   )
-
-  // ── Main app ──────────────────────────────────────────────────────────────
 
   const themeIcon = appliedTheme === 'dark' ? '☀️' : '🌙'
 
   return (
     <>
-      {/* Header */}
+      {/* Header with Lotus Icon */}
       <header className="app-header">
         <div className="app-logo">
-          <div className="logo-icon">🛡️</div>
-            <div className="logo-text">
-              NALAMU<span>DAN</span>
-            </div>
+          <img src="/favicon.svg" alt="Nalamudan" className="logo-icon" />
+          <div className="logo-text">
+            NALAMU<span>DAN</span>
+          </div>
         </div>
         <div className="header-right">
           <BMIPill bmi={profile?.bmi} />
