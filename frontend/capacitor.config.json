@@ -1,6 +1,6 @@
 {
-  "appId": "com.healthwealth.tracker",
-  "appName": "Health+Wealth",
+  "appId": "com.nalamudan.app",
+  "appName": "Nalamudan",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
