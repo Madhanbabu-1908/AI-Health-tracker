@@ -110,36 +110,54 @@ class AIAgent:
 
     async def predict_nutrition(self, food_name: str, quantity_g: float = 100) -> Dict:
         """
-        1. Search DuckDuckGo for nutrition facts.
-        2. If incomplete, ask Groq to fill gaps with structured JSON.
+        1. Run multi-source web lookup (Open Food Facts + DDG + page fetch) concurrently.
+        2. If confidence is still low, ask Groq with a cuisine-aware, portion-specific prompt.
+        3. Fill any remaining zero fields from the AI response.
         """
         web_result = await get_nutrition_from_web(food_name, quantity_g)
 
-        filled = sum(1 for k, v in web_result.items()
-                     if k not in ("source", "confidence") and v > 0)
+        fields = ("calories", "protein", "carbs", "fat", "fiber", "cholesterol", "iron")
+        filled = sum(1 for k in fields if web_result.get(k, 0) > 0)
 
-        if filled < 3 and self._client:
+        if filled < 5 and self._client:
+            # Build a cuisine-aware prompt so the model understands portion context
             prompt = (
-                f"Return ONLY a JSON object (no markdown, no explanation) with the "
-                f"estimated nutrition per {quantity_g}g of '{food_name}':\n"
-                '{"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"cholesterol":0,"iron":0}'
+                f"You are a professional nutritionist with expertise in global cuisines "
+                f"including Indian, South Asian, Middle Eastern, and Western foods.\n\n"
+                f"Provide accurate nutrition values for: \"{food_name}\" "
+                f"(quantity: {quantity_g}g).\n\n"
+                f"Consider:\n"
+                f"- Typical preparation methods (fried, grilled, steamed, curry-based)\n"
+                f"- Standard ingredients for this dish/food\n"
+                f"- Regional variations (e.g. South Indian biryani vs Hyderabadi)\n\n"
+                f"Return ONLY this JSON with realistic values, no markdown, no explanation:\n"
+                f'{{"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"cholesterol":0,"iron":0}}\n\n'
+                f"Current web data (fill zeros only):\n"
+                f"calories={web_result.get('calories',0)}, protein={web_result.get('protein',0)}g, "
+                f"carbs={web_result.get('carbs',0)}g, fat={web_result.get('fat',0)}g, "
+                f"fiber={web_result.get('fiber',0)}g, cholesterol={web_result.get('cholesterol',0)}mg, "
+                f"iron={web_result.get('iron',0)}mg"
             )
             try:
                 loop = asyncio.get_event_loop()
-                text, _ = await loop.run_in_executor(
+                text, model_used = await loop.run_in_executor(
                     None,
                     lambda: self._call_groq(
                         [{"role": "user", "content": prompt}],
-                        max_tokens=200,
+                        max_tokens=300,
                     )
                 )
+                # Strip markdown code fences if present
+                text = re.sub(r"```(?:json)?", "", text).strip()
                 start, end = text.find("{"), text.rfind("}") + 1
-                if start != -1 and end:
+                if start != -1 and end > start:
                     ai_data = json.loads(text[start:end])
-                    for k in ("calories", "protein", "carbs", "fat", "fiber", "cholesterol", "iron"):
-                        if web_result.get(k, 0) == 0 and ai_data.get(k, 0) > 0:
-                            web_result[k] = float(ai_data[k])
-                    web_result["source"] = "web_search+ai"
+                    for k in fields:
+                        ai_val = float(ai_data.get(k, 0) or 0)
+                        if web_result.get(k, 0) == 0 and ai_val > 0:
+                            web_result[k] = ai_val
+                    web_result["source"] = f"web+ai({model_used})"
+                    web_result["confidence"] = "medium"
             except Exception as e:
                 print(f"[AI] nutrition fill error: {e}")
 

@@ -284,25 +284,26 @@ async def water_today(session_id: str):
 
 @app.get("/ai/nutrition")
 async def predict_nutrition(
-    food_name: str = Query(..., description="Food item name"),
-    quantity:  float = Query(default=100.0),
+    food_name: str   = Query(..., description="Food item name"),
+    quantity:  float = Query(default=100.0, description="Grams or serving qty"),
+    unit:      str   = Query(default="g",   description="Unit: g, serving, cup, etc."),
 ):
-    """Search web + AI to predict nutrition values for a food item."""
-    agent  = get_agent()
-    result = await agent.predict_nutrition(food_name, quantity)
-    return {"success": True, "food_name": food_name, "quantity_g": quantity, "nutrition": result}
+    """Multi-source nutrition lookup: Open Food Facts + web + Groq AI fill."""
+    agent = get_agent()
+    if unit.lower() not in ("g", "gram", "grams"):
+        result = await agent.predict_nutrition_with_serving(food_name, quantity, unit)
+    else:
+        result = await agent.predict_nutrition(food_name, quantity)
+    return {"success": True, "food_name": food_name, "quantity_g": quantity, "unit": unit, "nutrition": result}
 
 
 @app.get("/ai/nutrition/serving")
 async def predict_nutrition_with_serving(
-    food_name: str = Query(..., description="Food item name"),
-    quantity: float = Query(default=1.0, description="Number of servings"),
-    unit: str = Query(default="serving", description="Serving unit (cup, bowl, piece, etc.)"),
+    food_name: str   = Query(..., description="Food item name"),
+    quantity:  float = Query(default=1.0, description="Number of servings"),
+    unit:      str   = Query(default="serving", description="Serving unit"),
 ):
-    """
-    Get nutrition for specific serving size - dynamically calculated.
-    Updates when user changes quantity or unit. NO HARDCODING.
-    """
+    """Resolve serving size dynamically then full nutrition lookup."""
     agent = get_agent()
     result = await agent.predict_nutrition_with_serving(food_name, quantity, unit)
     return {"success": True, "nutrition": result}
