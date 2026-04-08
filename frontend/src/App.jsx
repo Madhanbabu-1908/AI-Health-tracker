@@ -88,7 +88,7 @@ export default function App() {
   if (!ready) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', gap: 16 }}>
       <div style={{ width: 48, height: 48, background: 'linear-gradient(135deg, var(--accent), var(--accent-dim))', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-        🏋️
+        🛡️
       </div>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, color: 'var(--text-secondary)' }}>
         Loading...
@@ -128,10 +128,10 @@ export default function App() {
       {/* Header */}
       <header className="app-header">
         <div className="app-logo">
-          <div className="logo-icon">🏋️</div>
-          <div className="logo-text">
-            HEALTH<span>+</span>
-          </div>
+          <div className="logo-icon">🛡️</div>
+            <div className="logo-text">
+              NALAMU<span>DAN</span>
+            </div>
         </div>
         <div className="header-right">
           <BMIPill bmi={profile?.bmi} />
