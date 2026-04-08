@@ -1,18 +1,25 @@
 {
-  "appId": "com.ai.healthtracker",
-  "appName": "ai Health Tracker",
+  "appId": "com.healthwealth.tracker",
+  "appName": "Health+Wealth",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
-    "cleartext": true
+    "cleartext": true,
+    "allowNavigation": [
+      "https://ai-health-tracker-yycb.onrender.com"
+    ]
   },
   "android": {
     "allowMixedContent": true,
-    "minSdkVersion": 23,
-    "targetSdkVersion": 33,
-    "permissions": [
-      "android.permission.INTERNET",
-      "android.permission.ACCESS_NETWORK_STATE"
-    ]
+    "minSdkVersion": 24,
+    "targetSdkVersion": 34,
+    "buildOptions": {
+      "releaseType": "APK"
+    }
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
   }
 }
