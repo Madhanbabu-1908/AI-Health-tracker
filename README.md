@@ -1,6 +1,6 @@
-# 🏋️ Health+Wealth Tracker
+# 🛡️ Nalamudan | நலமுடன்
 
-AI-powered personal health & nutrition tracker with wealth (food cost) tracking.
+**A Health + Wealth Care Partner** — AI-powered personal nutrition tracker with food cost tracking.
 Built with React + FastAPI + Groq + DuckDuckGo MCP.
 
 ---
