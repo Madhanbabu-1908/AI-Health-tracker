@@ -32,7 +32,7 @@ export default function AIChat({ sessionId, profile, goals }) {
   const [messages, setMessages] = useState([
     {
       role: 'ai',
-      text: `Hey ${profile?.nickname || 'there'}! 👋 I'm your AI health coach. Ask me anything about nutrition, your progress, or meal ideas.`,
+      text: `வணக்கம் ${profile?.nickname || 'there'}! 👋 I'm your Nalamudan AI coach. Ask me anything about nutrition, your progress, or meal ideas.`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       model: null,
     }

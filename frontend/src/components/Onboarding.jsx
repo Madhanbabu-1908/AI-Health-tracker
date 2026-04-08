@@ -14,7 +14,7 @@ const ACTIVITY = [
   { val: 'sedentary',   icon: '🛋️', label: 'Sedentary',    desc: 'Desk job, little exercise' },
   { val: 'light',       icon: '🚶', label: 'Light',         desc: '1–3 workouts/week' },
   { val: 'moderate',    icon: '🏃', label: 'Moderate',      desc: '3–5 workouts/week' },
-  { val: 'active',      icon: '🏋️', label: 'Active',        desc: '6–7 workouts/week' },
+  { val: 'active',      icon: '⚡', label: 'Active',        desc: '6–7 workouts/week' },
   { val: 'very_active', icon: '⚡', label: 'Very Active',   desc: 'Physical job + daily training' },
 ]
 
@@ -91,13 +91,13 @@ export default function Onboarding({ sessionId, onComplete }) {
         {/* Logo */}
         <div className="onboard-header">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 16 }}>
-            <div className="logo-icon" style={{ width: 44, height: 44, fontSize: 22 }}>🏋️</div>
+            <div className="logo-icon" style={{ width: 44, height: 44, fontSize: 22 }}>🛡️</div>
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, letterSpacing: '0.02em' }}>
-              HEALTH<span style={{ color: 'var(--accent)' }}>+</span>WEALTH
+              NALAMU<span style={{ color: 'var(--accent)' }}>DAN</span>
             </div>
           </div>
-          <div className="onboard-sub">
-            Your personal AI nutrition tracker
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4, letterSpacing: '0.04em' }}>
+            நலமுடன் · Health + Wealth Care Partner
           </div>
         </div>
 
