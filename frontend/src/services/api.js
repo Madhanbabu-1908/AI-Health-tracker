@@ -68,8 +68,11 @@ export const waterApi = {
 // ─── AI ──────────────────────────────────────────────────────────────────────
 
 export const aiApi = {
-  predict: (food_name, quantity = 100) =>
-    api(`/ai/nutrition?food_name=${encodeURIComponent(food_name)}&quantity=${quantity}`),
+  // Pass unit so the backend resolves serving size correctly
+  predict: (food_name, quantity = 100, unit = 'g') =>
+    api(`/ai/nutrition?food_name=${encodeURIComponent(food_name)}&quantity=${quantity}&unit=${encodeURIComponent(unit)}`),
+  predictServing: (food_name, quantity = 1, unit = 'serving') =>
+    api(`/ai/nutrition/serving?food_name=${encodeURIComponent(food_name)}&quantity=${quantity}&unit=${encodeURIComponent(unit)}`),
   chat: (sid, query, context = {}) =>
     api('/ai/chat', { method: 'POST', body: JSON.stringify({ session_id: sid, query, context }) }),
 }
