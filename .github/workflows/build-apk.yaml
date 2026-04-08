@@ -44,7 +44,7 @@ jobs:
       working-directory: ./frontend
       run: |
         npm install @capacitor/cli @capacitor/android
-        npx cap init MadhanHealthTracker com.madhan.healthtracker --web-dir=dist
+        npx cap init NalamudanHealthTracker com.nalamudan.healthtracker --web-dir=dist
         npx cap add android
     
     - name: Update API URL in build
@@ -66,5 +66,5 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v3
       with:
-        name: madhan-health-tracker
-        path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+        name: nalamudan-health-tracker
+        path: frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
