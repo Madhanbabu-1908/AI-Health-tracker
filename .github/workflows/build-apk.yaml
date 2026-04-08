@@ -54,16 +54,13 @@ jobs:
         npx cap init Nalamudan com.nalamudan.healthtracker --web-dir=dist
         npx cap add android
     
-    - name: Create Complete Android Resources
+    - name: Create Android Resources
       working-directory: ./frontend/android/app/src/main/res
       run: |
-        # Create all necessary directories
         mkdir -p values
-        mkdir -p values-v21
-        mkdir -p layout
         mkdir -p drawable
         
-        # Create strings.xml
+        # strings.xml
         cat > values/strings.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
@@ -72,7 +69,7 @@ jobs:
         </resources>
         EOF
         
-        # Create colors.xml
+        # colors.xml
         cat > values/colors.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
@@ -83,17 +80,11 @@ jobs:
         </resources>
         EOF
         
-        # Create styles.xml (main)
+        # styles.xml
         cat > values/styles.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
             <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-                <item name="colorPrimary">@color/colorPrimary</item>
-                <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
-                <item name="colorAccent">@color/colorAccent</item>
-            </style>
-            
-            <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
                 <item name="colorPrimary">@color/colorPrimary</item>
                 <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
                 <item name="colorAccent">@color/colorAccent</item>
@@ -106,7 +97,7 @@ jobs:
         </resources>
         EOF
         
-        # Create splash drawable
+        # splash.xml (only this, no splash.png)
         cat > drawable/splash.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
@@ -119,9 +110,9 @@ jobs:
         </layer-list>
         EOF
         
-        echo "✅ Android resources created successfully"
+        echo "✅ Android resources created"
     
-    - name: Copy App Icons to Android
+    - name: Copy App Icons
       run: |
         mkdir -p frontend/android/app/src/main/res/mipmap-mdpi
         mkdir -p frontend/android/app/src/main/res/mipmap-hdpi
@@ -129,7 +120,7 @@ jobs:
         mkdir -p frontend/android/app/src/main/res/mipmap-xxhdpi
         mkdir -p frontend/android/app/src/main/res/mipmap-xxxhdpi
         
-        # Copy icons (using available files)
+        # Copy icons
         if [ -f "frontend/public/android-chrome-512x512.png" ]; then
           cp frontend/public/android-chrome-512x512.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           cp frontend/public/android-chrome-512x512.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
@@ -140,7 +131,6 @@ jobs:
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
         fi
         
-        # For smaller sizes, use scaled versions of available icons
         if [ -f "frontend/public/favicon-48x48.png" ]; then
           cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
@@ -152,7 +142,18 @@ jobs:
         
         echo "✅ Icons copied"
     
-    - name: Update AndroidManifest.xml
+    - name: Create MainActivity
+      working-directory: ./frontend/android/app/src/main/java/com/nalamudan/healthtracker
+      run: |
+        mkdir -p com/nalamudan/healthtracker
+        cat > com/nalamudan/healthtracker/MainActivity.java << 'EOF'
+        package com.nalamudan.healthtracker;
+        import com.getcapacitor.BridgeActivity;
+        public class MainActivity extends BridgeActivity {}
+        EOF
+        echo "✅ MainActivity created"
+    
+    - name: Update AndroidManifest
       working-directory: ./frontend/android/app/src/main
       run: |
         cat > AndroidManifest.xml << 'EOF'
@@ -185,46 +186,13 @@ jobs:
         
         </manifest>
         EOF
-        echo "✅ AndroidManifest.xml updated"
-    
-    - name: Update MainActivity.java
-      working-directory: ./frontend/android/app/src/main/java/com/nalamudan/healthtracker
-      run: |
-        mkdir -p com/nalamudan/healthtracker
-        cat > com/nalamudan/healthtracker/MainActivity.java << 'EOF'
-        package com.nalamudan.healthtracker;
-        
-        import com.getcapacitor.BridgeActivity;
-        
-        public class MainActivity extends BridgeActivity {}
-        EOF
-        echo "✅ MainActivity.java created"
-    
-    - name: Update API URL
-      working-directory: ./frontend
-      run: |
-        mkdir -p src/services
-        cat > src/services/api.js << 'EOF'
-        export const API_BASE_URL = '${{ secrets.API_BASE_URL }}'
-        
-        export async function apiCall(endpoint, options = {}) {
-          const url = `${API_BASE_URL}${endpoint}`
-          const response = await fetch(url, {
-            headers: { 'Content-Type': 'application/json' },
-            ...options
-          })
-          if (!response.ok) throw new Error(`API call failed: ${response.statusText}`)
-          return response.json()
-        }
-        
-        export default { API_BASE_URL, apiCall }
-        EOF
+        echo "✅ AndroidManifest updated"
     
     - name: Sync Capacitor
       working-directory: ./frontend
       run: npx cap sync android
     
-    - name: Build APK with Gradle
+    - name: Build APK
       working-directory: ./frontend/android
       run: |
         chmod +x gradlew
