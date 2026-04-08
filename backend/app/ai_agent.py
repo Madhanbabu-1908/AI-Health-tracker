@@ -6,7 +6,8 @@ Uses 3 Groq models with smart fallback:
   2. llama-3.1-8b-instant          — secondary, fast & free
   3. gemma2-9b-it                  — tertiary, last resort
 
-Prompt-guard logic, caching, web-search context injection via MCP tools.
+Dynamic serving calculation, web-search context injection via MCP tools.
+NO HARDCODED VALUES.
 """
 
 import os
@@ -23,7 +24,7 @@ except ImportError:
     GROQ_AVAILABLE = False
 
 from . import database as db
-from .mcp_tools import get_nutrition_from_web, search_health_info
+from .mcp_tools import get_nutrition_from_web, search_health_info, get_nutrition_with_serving
 
 
 # ─── Model registry ──────────────────────────────────────────────────────────
@@ -105,7 +106,7 @@ class AIAgent:
                 continue
         raise RuntimeError(f"All models failed. Last error: {last_err}")
 
-    # ── Nutrition prediction (web search + AI fallback) ───────────────────────
+    # ─── Nutrition prediction (web search + AI fallback) ───────────────────────
 
     async def predict_nutrition(self, food_name: str, quantity_g: float = 100) -> Dict:
         """
@@ -143,6 +144,50 @@ class AIAgent:
                 print(f"[AI] nutrition fill error: {e}")
 
         return web_result
+
+    # ─── Nutrition prediction with dynamic serving size ───────────────────────
+
+    async def predict_nutrition_with_serving(
+        self, 
+        food_name: str, 
+        quantity: float = 1, 
+        unit: str = "serving"
+    ) -> Dict:
+        """
+        Predict nutrition for specific serving size - dynamically calculated
+        NO HARDCODING - uses web search to determine serving weights
+        """
+        # Use dynamic serving calculation from mcp_tools
+        result = await get_nutrition_with_serving(food_name, quantity, unit)
+        
+        # If confidence is low and Groq is available, enhance with AI
+        if result.get("confidence") == "low" and self._client:
+            try:
+                serving_grams = result.get('serving_grams', 150)
+                prompt = f"""Return ONLY JSON for nutrition of {quantity} {unit} of {food_name} (approx {serving_grams}g):
+{{"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"cholesterol":0,"iron":0}}
+Use realistic values based on standard nutrition databases. Return ONLY JSON."""
+                
+                loop = asyncio.get_event_loop()
+                text, _ = await loop.run_in_executor(
+                    None,
+                    lambda: self._call_groq(
+                        [{"role": "user", "content": prompt}],
+                        max_tokens=200,
+                    )
+                )
+                start, end = text.find("{"), text.rfind("}") + 1
+                if start != -1 and end:
+                    ai_data = json.loads(text[start:end])
+                    for key in ["calories", "protein", "carbs", "fat", "fiber", "cholesterol", "iron"]:
+                        if result.get(key, 0) == 0 and ai_data.get(key, 0) > 0:
+                            result[key] = float(ai_data[key])
+                    result["source"] = "web_search+ai"
+                    result["confidence"] = "medium"
+            except Exception as e:
+                print(f"[AI] serving prediction error: {e}")
+        
+        return result
 
     # ── Health coaching chat ──────────────────────────────────────────────────
 
