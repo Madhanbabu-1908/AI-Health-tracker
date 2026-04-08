@@ -1,23 +1,30 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
-from datetime import datetime, timedelta
-import json
+"""
+AI Health & Wealth Tracker — FastAPI Backend
+─────────────────────────────────────────────
+All endpoints are session-scoped. No auth needed — session_id is generated
+client-side (UUID4) and stored in localStorage. Clearing cache deletes data.
+"""
+
 import os
 import uuid
-import re
+from datetime import datetime
+from typing import Optional
 
-# Import your modules
-from .models import UserProfile, FoodEntry, AIRequest, HealthGoal, ActivityLevel, PersonalizedNutritionGoals
-from .database import Database
-from .orchestrator import AgenticOrchestrator
-from .goal_calculator import GoalCalculator
-from .ai_agent import AIHealthAgent
-from .mcp_tools import MCPTools
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="AI Health Tracker API")
+from . import database as db
+from .models import (
+    ProfileSetupRequest, FoodItem, FoodEntry,
+    WaterLog, ChatRequest,
+)
+from .goal_calculator import calculate_all_goals
+from .ai_agent import get_agent
 
-# Enable CORS
+# ─── App setup ───────────────────────────────────────────────────────────────
+
+app = FastAPI(title="AI Health & Wealth Tracker", version="4.0.0")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,255 +33,282 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize components
-db = Database()
-orchestrator = AgenticOrchestrator()
-ai_agent = AIHealthAgent()
-mcp = MCPTools()
-goal_calculator = GoalCalculator()
 
-# ========== Helper Functions ==========
+@app.on_event("startup")
+async def startup():
+    db.init_db()
 
-def calculate_bmi(height_cm, weight_kg):
-    """Calculate BMI from height (cm) and weight (kg)"""
-    if height_cm <= 0 or weight_kg <= 0:
-        return 0
-    height_m = height_cm / 100
-    bmi = weight_kg / (height_m * height_m)
-    return round(bmi, 1)
 
-# ========== API Endpoints ==========
+# ─── Health check ────────────────────────────────────────────────────────────
 
 @app.get("/")
 async def root():
-    return {"message": "AI Health Tracker API", "status": "active", "version": "3.0"}
+    return {"status": "ok", "app": "AI Health & Wealth Tracker", "version": "4.0.0"}
 
-@app.post("/user/setup-goals")
-async def setup_user_goals(request: Request):
-    """Initialize user profile and calculate ALL goals dynamically"""
-    try:
-        body = await request.json()
-        
-        nickname = body.get("nickname")
-        height = float(body.get("height", 0))
-        weight = float(body.get("weight", 0))
-        age = int(body.get("age", 0))
-        gender = body.get("gender", "male")
-        primary_goal = body.get("primary_goal", "maintain_weight")
-        activity_level = body.get("activity_level", "moderate")
-        secondary_goals = body.get("secondary_goals", [])
-        
-        if not nickname:
-            return {"success": False, "message": "Nickname is required"}
-        
-        # Validate inputs
-        if height < 50 or height > 250:
-            return {"success": False, "message": "Height must be between 50cm and 250cm"}
-        if weight < 20 or weight > 300:
-            return {"success": False, "message": "Weight must be between 20kg and 300kg"}
-        if age < 10 or age > 120:
-            return {"success": False, "message": "Age must be between 10 and 120"}
-        
-        # Calculate BMI
-        bmi = calculate_bmi(height, weight)
-        
-        # Create profile
-        profile = {
-            "nickname": nickname,
-            "height": height,
-            "weight": weight,
-            "bmi": bmi,
-            "age": age,
-            "gender": gender,
-            "primary_goal": primary_goal,
-            "activity_level": activity_level,
-            "created_at": datetime.now().isoformat()
-        }
-        db.save_profile(UserProfile(**profile))
-        
-        # Create user goals
-        user_goals = {
-            "primary_goal": primary_goal,
-            "secondary_goals": secondary_goals,
-            "activity_level": activity_level
-        }
-        
-        # Calculate ALL goals dynamically - NO HARDCODING!
-        nutrition_goals = GoalCalculator.calculate_all_goals(profile, user_goals)
-        db.update_nutrition_goals(nutrition_goals)
-        
-        # BMI category
-        if bmi < 18.5:
-            bmi_category = "Underweight"
-        elif bmi < 25:
-            bmi_category = "Normal weight"
-        elif bmi < 30:
-            bmi_category = "Overweight"
-        else:
-            bmi_category = "Obese"
-        
-        return {
-            "success": True,
-            "profile": profile,
-            "nutrition_goals": nutrition_goals.dict(),
-            "bmi": bmi,
-            "bmi_category": bmi_category,
-            "message": nutrition_goals.explanation
-        }
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return {"success": False, "message": str(e)}
 
-@app.get("/profile")
-async def get_profile():
-    profile = db.get_profile()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    return profile.dict()
+@app.get("/health")
+async def health():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
-@app.get("/nutrition-goals")
-async def get_nutrition_goals():
-    goals = db.get_nutrition_goals()
-    return goals.dict()
 
-@app.delete("/reset-all-data")
-async def reset_all_data():
-    """Delete ALL user data"""
-    try:
-        db.save_profile(None)
-        # Reset to default goals (will be recalculated on next setup)
-        default_goals = PersonalizedNutritionGoals(
-            protein_goal=100, calorie_goal=2500, carb_goal=250, fat_goal=60,
-            fiber_goal=25, cholesterol_limit=300, iron_goal=15,
-            calcium_goal=1000, vitamin_d_goal=600, water_goal=2.5,
-            explanation="Default goals - please setup your profile"
-        )
-        db.update_nutrition_goals(default_goals)
-        return {"success": True, "message": "All data reset successfully"}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+# ─── Profile / Session ───────────────────────────────────────────────────────
 
-@app.get("/ai/predict-nutrition")
-async def predict_nutrition(food_name: str):
-    """Use MCP tools to search for nutrition info"""
-    result = await mcp.get_nutrition_from_api(food_name)
-    return {"success": True, "nutrition": result}
+@app.post("/profile/setup")
+async def setup_profile(req: ProfileSetupRequest):
+    """Create or update user profile and auto-calculate all nutrition goals."""
+    if not req.nickname.strip():
+        raise HTTPException(400, "nickname is required")
+    if not (50 <= req.height <= 250):
+        raise HTTPException(400, "height must be between 50 and 250 cm")
+    if not (20 <= req.weight <= 300):
+        raise HTTPException(400, "weight must be between 20 and 300 kg")
+    if not (10 <= req.age <= 120):
+        raise HTTPException(400, "age must be between 10 and 120")
 
-@app.get("/food/list")
-async def list_foods():
-    foods = db.get_food_items()
-    return {"foods": [f.dict() for f in foods]}
-
-@app.post("/food/add")
-async def add_food(
-    name: str,
-    cost: float,
-    protein: float = 0,
-    carbs: float = 0,
-    cholesterol: float = 0,
-    iron: float = 0,
-    calories: float = 0,
-    unit: str = "serving"
-):
-    food_id = str(uuid.uuid4())[:8]
-    new_food = FoodItem(
-        id=food_id,
-        name=name,
-        protein_per_unit=protein,
-        carbs_per_unit=carbs,
-        cholesterol_per_unit=cholesterol,
-        iron_per_unit=iron,
-        calories_per_unit=calories,
-        cost=cost,
-        default_unit=unit
-    )
-    db.add_food_item(new_food)
-    return {"success": True, "food": new_food.dict(), "message": f"Added {name}"}
-
-@app.post("/food/log")
-async def log_food(name: str, quantity: float = 1.0):
-    foods = db.get_food_items()
-    
-    food_item = None
-    for item in foods:
-        if item.name.lower() == name.lower():
-            food_item = item
+    bmi = round(req.weight / ((req.height / 100) ** 2), 1)
+    bmi_categories = [(18.5, "Underweight"), (25, "Normal"), (30, "Overweight")]
+    bmi_category = "Obese"
+    for threshold, label in bmi_categories:
+        if bmi < threshold:
+            bmi_category = label
             break
-    
-    if not food_item:
-        raise HTTPException(status_code=404, detail=f"Food '{name}' not found")
-    
+
+    from .models import UserProfile
+    profile = UserProfile(
+        session_id     = req.session_id,
+        nickname       = req.nickname.strip(),
+        height         = req.height,
+        weight         = req.weight,
+        bmi            = bmi,
+        age            = req.age,
+        gender         = req.gender,
+        primary_goal   = req.primary_goal,
+        activity_level = req.activity_level,
+        currency       = req.currency,
+        created_at     = datetime.now().isoformat(),
+        updated_at     = datetime.now().isoformat(),
+    )
+    db.save_profile(profile)
+
+    goals = calculate_all_goals(
+        profile.model_dump(),
+        {"primary_goal": req.primary_goal, "activity_level": req.activity_level, "secondary_goals": req.secondary_goals},
+        req.session_id,
+    )
+    db.save_nutrition_goals(goals)
+
+    return {
+        "success":      True,
+        "profile":      profile.model_dump(),
+        "goals":        goals.model_dump(),
+        "bmi":          bmi,
+        "bmi_category": bmi_category,
+        "message":      goals.explanation,
+    }
+
+
+@app.get("/profile/{session_id}")
+async def get_profile(session_id: str):
+    profile = db.get_profile(session_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    return profile
+
+
+@app.get("/goals/{session_id}")
+async def get_goals(session_id: str):
+    goals = db.get_nutrition_goals(session_id)
+    if not goals:
+        raise HTTPException(404, "Goals not found")
+    return goals
+
+
+@app.delete("/session/{session_id}")
+async def delete_session(session_id: str):
+    """Delete all user data for this session."""
+    db.delete_session(session_id)
+    return {"success": True, "message": "All data deleted"}
+
+
+# ─── Food Items ───────────────────────────────────────────────────────────────
+
+@app.get("/foods/{session_id}")
+async def list_foods(session_id: str):
+    return {"foods": db.get_food_items(session_id)}
+
+
+@app.post("/foods/{session_id}")
+async def add_food(session_id: str, item: dict):
+    """Add a new food item to user's database."""
+    food = FoodItem(
+        id                   = str(uuid.uuid4())[:8],
+        session_id           = session_id,
+        name                 = item.get("name", "").strip(),
+        protein_per_unit     = float(item.get("protein_per_unit", 0)),
+        carbs_per_unit       = float(item.get("carbs_per_unit", 0)),
+        fat_per_unit         = float(item.get("fat_per_unit", 0)),
+        cholesterol_per_unit = float(item.get("cholesterol_per_unit", 0)),
+        iron_per_unit        = float(item.get("iron_per_unit", 0)),
+        fiber_per_unit       = float(item.get("fiber_per_unit", 0)),
+        calories_per_unit    = float(item.get("calories_per_unit", 0)),
+        cost_per_unit        = float(item.get("cost_per_unit", 0)),
+        default_unit         = item.get("default_unit", "serving"),
+        created_at           = datetime.now().isoformat(),
+    )
+    if not food.name:
+        raise HTTPException(400, "Food name is required")
+    db.add_food_item(food)
+    return {"success": True, "food": food.model_dump()}
+
+
+@app.delete("/foods/{session_id}/{food_id}")
+async def delete_food(session_id: str, food_id: str):
+    db.delete_food_item(session_id, food_id)
+    return {"success": True}
+
+
+# ─── Food Logging ────────────────────────────────────────────────────────────
+
+@app.post("/log/{session_id}")
+async def log_food(session_id: str, body: dict):
+    """Log a food entry by food_id + quantity."""
+    food_id  = body.get("food_id")
+    quantity = float(body.get("quantity", 1.0))
+
+    food = db.get_food_item_by_id(session_id, food_id)
+    if not food:
+        raise HTTPException(404, f"Food item not found")
+
     entry = FoodEntry(
-        id=str(uuid.uuid4())[:8],
-        name=food_item.name,
-        protein=food_item.protein_per_unit * quantity,
-        carbs=food_item.carbs_per_unit * quantity,
-        cholesterol=food_item.cholesterol_per_unit * quantity,
-        iron=food_item.iron_per_unit * quantity,
-        calories=food_item.calories_per_unit * quantity,
-        cost=food_item.cost * quantity,
-        quantity=quantity,
-        unit=food_item.default_unit
+        id          = str(uuid.uuid4())[:10],
+        session_id  = session_id,
+        name        = food["name"],
+        protein     = round(food["protein_per_unit"] * quantity, 2),
+        carbs       = round(food["carbs_per_unit"] * quantity, 2),
+        fat         = round(food["fat_per_unit"] * quantity, 2),
+        cholesterol = round(food["cholesterol_per_unit"] * quantity, 2),
+        iron        = round(food["iron_per_unit"] * quantity, 2),
+        fiber       = round(food["fiber_per_unit"] * quantity, 2),
+        calories    = round(food["calories_per_unit"] * quantity, 2),
+        cost        = round(food["cost_per_unit"] * quantity, 2),
+        quantity    = quantity,
+        unit        = food["default_unit"],
+        logged_at   = datetime.now().isoformat(),
     )
     db.add_food_entry(entry)
-    
-    return {"success": True, "message": f"Logged {quantity} × {food_item.name}"}
+    return {"success": True, "entry": entry.model_dump()}
 
-@app.get("/today")
-async def get_today():
-    totals = db.get_today_totals()
-    goals = db.get_nutrition_goals()
-    
+
+@app.delete("/log/{session_id}/{entry_id}")
+async def delete_log_entry(session_id: str, entry_id: str):
+    db.delete_food_entry(session_id, entry_id)
+    return {"success": True}
+
+
+@app.get("/log/{session_id}/today")
+async def today(session_id: str):
+    """Today's totals + per-goal percentages."""
+    totals = db.get_today_totals(session_id)
+    goals  = db.get_nutrition_goals(session_id) or {}
+    water_ml = db.get_today_water_ml(session_id)
+
+    def pct(val, goal):
+        return round((val / goal) * 100, 1) if goal else 0
+
     return {
-        "totals": totals,
+        "totals":    totals,
+        "water_ml":  water_ml,
+        "water_l":   round(water_ml / 1000, 2),
         "percentages": {
-            "protein": round((totals["protein"] / goals.protein_goal) * 100, 1) if goals.protein_goal > 0 else 0,
-            "calories": round((totals["calories"] / goals.calorie_goal) * 100, 1) if goals.calorie_goal > 0 else 0,
-            "cholesterol": round((totals["cholesterol"] / goals.cholesterol_limit) * 100, 1) if goals.cholesterol_limit > 0 else 0
-        }
+            "calories":    pct(totals["calories"],    goals.get("calorie_goal", 2000)),
+            "protein":     pct(totals["protein"],     goals.get("protein_goal", 100)),
+            "carbs":       pct(totals["carbs"],       goals.get("carb_goal", 250)),
+            "fat":         pct(totals["fat"],         goals.get("fat_goal", 65)),
+            "cholesterol": pct(totals["cholesterol"], goals.get("cholesterol_limit", 300)),
+            "iron":        pct(totals["iron"],        goals.get("iron_goal", 8)),
+            "fiber":       pct(totals["fiber"],       goals.get("fiber_goal", 25)),
+            "water":       pct(water_ml / 1000,       goals.get("water_goal", 2.5)),
+        },
+        "entries": db.get_entries_for_date(session_id, datetime.now().strftime("%Y-%m-%d")),
     }
 
-@app.get("/history")
-async def get_history(days: int = 7):
-    entries = db.get_last_n_days_entries(days)
-    result = []
-    
-    for date, daily_entries in entries.items():
-        day_total = {"date": date, "protein": 0, "carbs": 0, "cholesterol": 0, "iron": 0, "calories": 0, "cost": 0}
-        for entry in daily_entries:
-            day_total["protein"] += entry.get("protein", 0)
-            day_total["carbs"] += entry.get("carbs", 0)
-            day_total["cholesterol"] += entry.get("cholesterol", 0)
-            day_total["iron"] += entry.get("iron", 0)
-            day_total["calories"] += entry.get("calories", 0)
-            day_total["cost"] += entry.get("cost", 0)
-        result.append(day_total)
-    
-    # Reverse to show oldest first
-    return list(reversed(result))
+
+@app.get("/log/{session_id}/history")
+async def history(session_id: str, days: int = Query(default=7, ge=1, le=90)):
+    food_history  = db.get_history(session_id, days)
+    water_history = db.get_water_history(session_id, days)
+
+    # Merge water into food history by date
+    water_by_date = {w["date"]: w["total_ml"] for w in water_history}
+    for day in food_history:
+        day["water_ml"] = water_by_date.get(day["date"], 0)
+        day["water_l"]  = round(day["water_ml"] / 1000, 2)
+
+    return food_history
+
+
+# ─── Water Logging ────────────────────────────────────────────────────────────
+
+@app.post("/water/{session_id}")
+async def log_water(session_id: str, body: dict):
+    """Log water intake in ml."""
+    amount_ml = float(body.get("amount_ml", 0))
+    if amount_ml <= 0:
+        raise HTTPException(400, "amount_ml must be > 0")
+
+    log = WaterLog(
+        id         = str(uuid.uuid4())[:10],
+        session_id = session_id,
+        amount_ml  = amount_ml,
+        logged_at  = datetime.now().isoformat(),
+    )
+    db.add_water_log(log)
+    total_ml = db.get_today_water_ml(session_id)
+    return {"success": True, "logged_ml": amount_ml, "total_today_ml": total_ml}
+
+
+@app.get("/water/{session_id}/today")
+async def water_today(session_id: str):
+    total_ml = db.get_today_water_ml(session_id)
+    goals    = db.get_nutrition_goals(session_id) or {}
+    goal_l   = goals.get("water_goal", 2.5)
+    return {
+        "total_ml":   total_ml,
+        "total_l":    round(total_ml / 1000, 2),
+        "goal_l":     goal_l,
+        "percentage": round((total_ml / 1000 / goal_l) * 100, 1) if goal_l else 0,
+    }
+
+
+# ─── AI Endpoints ─────────────────────────────────────────────────────────────
+
+@app.get("/ai/nutrition")
+async def predict_nutrition(
+    food_name: str = Query(..., description="Food item name"),
+    quantity:  float = Query(default=100.0),
+):
+    """Search web + AI to predict nutrition values for a food item."""
+    agent  = get_agent()
+    result = await agent.predict_nutrition(food_name, quantity)
+    return {"success": True, "food_name": food_name, "quantity_g": quantity, "nutrition": result}
+
 
 @app.post("/ai/chat")
-async def ai_chat(request: dict):
-    """AI chat using orchestrator with MCP tools"""
-    query = request.get("query", "")
-    
-    # Get context
-    profile = db.get_profile()
-    goals = db.get_nutrition_goals()
-    today_totals = db.get_today_totals()
-    
-    context = {
-        "profile": profile.dict() if profile else {},
-        "goals": goals.dict(),
-        "today": today_totals
-    }
-    
-    # Use orchestrator to process query
-    result = await orchestrator.process_ai_query(query, context)
-    
-    return {"response": result.get("response", "I'm here to help!")}
+async def ai_chat(req: ChatRequest):
+    """Multi-model AI health coach with MCP web search context."""
+    profile  = db.get_profile(req.session_id) or {}
+    goals    = db.get_nutrition_goals(req.session_id) or {}
+    today    = db.get_today_totals(req.session_id)
+    water_ml = db.get_today_water_ml(req.session_id)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    context = {
+        "profile":  profile,
+        "goals":    goals,
+        "today":    today,
+        "water_ml": water_ml,
+        **(req.context or {}),
+    }
+
+    agent  = get_agent()
+    result = await agent.chat(req.query, context)
+    return result
