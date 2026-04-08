@@ -3,6 +3,8 @@ name: Build Android APK
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'frontend/**'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +36,50 @@ jobs:
         export ANDROID_SDK_ROOT=$PWD/android-sdk
         echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "platforms;android-33" "build-tools;33.0.0"
     
+    - name: Copy App Icons to Android Resources
+      run: |
+        # Create required icon directories
+        mkdir -p frontend/android/app/src/main/res/mipmap-mdpi
+        mkdir -p frontend/android/app/src/main/res/mipmap-hdpi
+        mkdir -p frontend/android/app/src/main/res/mipmap-xhdpi
+        mkdir -p frontend/android/app/src/main/res/mipmap-xxhdpi
+        mkdir -p frontend/android/app/src/main/res/mipmap-xxxhdpi
+        
+        # Copy icons from public folder to Android resources
+        # Using the icons you already have
+        
+        # For mdpi (48x48) - use favicon-48x48.png
+        if [ -f "frontend/public/favicon-48x48.png" ]; then
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+        fi
+        
+        # For hdpi (72x72) - use android-chrome-192x192.png resized or favicon-48x48
+        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+        fi
+        
+        # For xhdpi (96x96) - use android-chrome-192x192.png
+        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+        fi
+        
+        # For xxhdpi (144x144) - use android-chrome-192x192.png
+        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+        fi
+        
+        # For xxxhdpi (192x192) - use android-chrome-192x192.png
+        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+        fi
+        
+        echo "✅ Icons copied successfully"
+    
     - name: Build Frontend
       working-directory: ./frontend
       run: |
@@ -44,7 +90,7 @@ jobs:
       working-directory: ./frontend
       run: |
         npm install @capacitor/cli @capacitor/android
-        npx cap init NalamudanHealthTracker com.nalamudan.healthtracker --web-dir=dist
+        npx cap init Nalamudan com.nalamudan.healthtracker --web-dir=dist
         npx cap add android
     
     - name: Update API URL in build
@@ -52,6 +98,26 @@ jobs:
       run: |
         # Replace API URL with your Render.com URL
         sed -i "s|https://your-backend.onrender.com|${{ secrets.API_BASE_URL }}|g" src/services/api.js
+    
+    - name: Update Android App Name and Theme
+      working-directory: ./frontend/android/app/src/main/res
+      run: |
+        # Update strings.xml with app name
+        cat > values/strings.xml << 'EOF'
+        <resources>
+            <string name="app_name">Nalamudan</string>
+        </resources>
+        EOF
+        
+        # Create or update colors.xml
+        cat > values/colors.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <color name="colorPrimary">#00e5a0</color>
+            <color name="colorPrimaryDark">#00b87d</color>
+            <color name="colorAccent">#00e5a0</color>
+        </resources>
+        EOF
     
     - name: Sync Capacitor
       working-directory: ./frontend
@@ -63,8 +129,12 @@ jobs:
         chmod +x gradlew
         ./gradlew assembleDebug
     
+    - name: Rename APK
+      run: |
+        mv frontend/android/app/build/outputs/apk/debug/app-debug.apk frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
+    
     - name: Upload APK
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: nalamudan-health-tracker
+        name: Nalamudan-APK
         path: frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
