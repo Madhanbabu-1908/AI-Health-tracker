@@ -48,13 +48,52 @@ jobs:
         npm install @capacitor/cli @capacitor/android
         
         if [ -d "android" ]; then
-          echo "Android platform exists, syncing..."
-          npx cap sync android
-        else
-          echo "Creating Android platform..."
-          npx cap init Nalamudan com.nalamudan.healthtracker --web-dir=dist
-          npx cap add android
+          echo "Android platform exists, cleaning..."
+          rm -rf android
         fi
+        
+        echo "Creating Android platform..."
+        npx cap init Nalamudan com.nalamudan.healthtracker --web-dir=dist
+        npx cap add android
+    
+    - name: Fix Android Resources
+      working-directory: ./frontend/android/app/src/main/res
+      run: |
+        # Create values directory if not exists
+        mkdir -p values
+        
+        # Create strings.xml with required resources
+        cat > values/strings.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <string name="app_name">Nalamudan</string>
+            <string name="title_activity_main">Nalamudan</string>
+        </resources>
+        EOF
+        
+        # Create colors.xml
+        cat > values/colors.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <color name="colorPrimary">#00e5a0</color>
+            <color name="colorPrimaryDark">#00b87d</color>
+            <color name="colorAccent">#00e5a0</color>
+        </resources>
+        EOF
+        
+        # Create styles.xml
+        cat > values/styles.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+                <item name="colorPrimary">@color/colorPrimary</item>
+                <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+                <item name="colorAccent">@color/colorAccent</item>
+            </style>
+        </resources>
+        EOF
+        
+        echo "✅ Android resource files created"
     
     - name: Copy App Icons to Android
       run: |
@@ -66,61 +105,37 @@ jobs:
         mkdir -p frontend/android/app/src/main/res/mipmap-xxxhdpi
         
         # Copy icons from public folder to Android resources
-        # Using your existing icon files
-        
-        # mdpi (48x48) - use favicon-48x48.png
+        # mdpi (48x48)
         if [ -f "frontend/public/favicon-48x48.png" ]; then
           cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
           cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
         fi
         
-        # hdpi (72x72) - use android-chrome-192x192.png
+        # hdpi (72x72)
         if [ -f "frontend/public/android-chrome-192x192.png" ]; then
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
         fi
         
-        # xhdpi (96x96) - use android-chrome-192x192.png
+        # xhdpi (96x96)
         if [ -f "frontend/public/android-chrome-192x192.png" ]; then
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
         fi
         
-        # xxhdpi (144x144) - use android-chrome-192x192.png
+        # xxhdpi (144x144)
         if [ -f "frontend/public/android-chrome-192x192.png" ]; then
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
         fi
         
-        # xxxhdpi (192x192) - use android-chrome-192x192.png
+        # xxxhdpi (192x192)
         if [ -f "frontend/public/android-chrome-192x192.png" ]; then
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
         fi
         
-        echo "✅ App icons copied successfully"
-    
-    - name: Update Android App Name and Colors
-      working-directory: ./frontend/android/app/src/main/res
-      run: |
-        # Update app name
-        cat > values/strings.xml << 'EOF'
-        <resources>
-            <string name="app_name">Nalamudan</string>
-        </resources>
-        EOF
-        
-        # Set app theme colors
-        cat > values/colors.xml << 'EOF'
-        <?xml version="1.0" encoding="utf-8"?>
-        <resources>
-            <color name="colorPrimary">#00e5a0</color>
-            <color name="colorPrimaryDark">#00b87d</color>
-            <color name="colorAccent">#00e5a0</color>
-        </resources>
-        EOF
-        
-        echo "✅ App name and colors configured"
+        echo "✅ App icons copied"
     
     - name: Update API URL
       working-directory: ./frontend
@@ -150,11 +165,13 @@ jobs:
       working-directory: ./frontend/android
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug
+        ./gradlew assembleDebug --stacktrace
     
     - name: Rename APK
       run: |
-        cp frontend/android/app/build/outputs/apk/debug/app-debug.apk frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
+        if [ -f "frontend/android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
+        fi
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
