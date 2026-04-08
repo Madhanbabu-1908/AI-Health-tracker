@@ -48,21 +48,22 @@ jobs:
         npm install @capacitor/cli @capacitor/android
         
         if [ -d "android" ]; then
-          echo "Android platform exists, cleaning..."
           rm -rf android
         fi
         
-        echo "Creating Android platform..."
         npx cap init Nalamudan com.nalamudan.healthtracker --web-dir=dist
         npx cap add android
     
-    - name: Fix Android Resources
+    - name: Create Complete Android Resources
       working-directory: ./frontend/android/app/src/main/res
       run: |
-        # Create values directory if not exists
+        # Create all necessary directories
         mkdir -p values
+        mkdir -p values-v21
+        mkdir -p layout
+        mkdir -p drawable
         
-        # Create strings.xml with required resources
+        # Create strings.xml
         cat > values/strings.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
@@ -78,10 +79,11 @@ jobs:
             <color name="colorPrimary">#00e5a0</color>
             <color name="colorPrimaryDark">#00b87d</color>
             <color name="colorAccent">#00e5a0</color>
+            <color name="background">#121212</color>
         </resources>
         EOF
         
-        # Create styles.xml
+        # Create styles.xml (main)
         cat > values/styles.xml << 'EOF'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
@@ -90,52 +92,113 @@ jobs:
                 <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
                 <item name="colorAccent">@color/colorAccent</item>
             </style>
+            
+            <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+                <item name="colorPrimary">@color/colorPrimary</item>
+                <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+                <item name="colorAccent">@color/colorAccent</item>
+            </style>
+            
+            <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+                <item name="android:background">@color/background</item>
+                <item name="android:windowBackground">@drawable/splash</item>
+            </style>
         </resources>
         EOF
         
-        echo "✅ Android resource files created"
+        # Create splash drawable
+        cat > drawable/splash.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+            <item android:drawable="@color/background"/>
+            <item>
+                <bitmap
+                    android:gravity="center"
+                    android:src="@mipmap/ic_launcher"/>
+            </item>
+        </layer-list>
+        EOF
+        
+        echo "✅ Android resources created successfully"
     
     - name: Copy App Icons to Android
       run: |
-        # Create icon directories
         mkdir -p frontend/android/app/src/main/res/mipmap-mdpi
         mkdir -p frontend/android/app/src/main/res/mipmap-hdpi
         mkdir -p frontend/android/app/src/main/res/mipmap-xhdpi
         mkdir -p frontend/android/app/src/main/res/mipmap-xxhdpi
         mkdir -p frontend/android/app/src/main/res/mipmap-xxxhdpi
         
-        # Copy icons from public folder to Android resources
-        # mdpi (48x48)
-        if [ -f "frontend/public/favicon-48x48.png" ]; then
-          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+        # Copy icons (using available files)
+        if [ -f "frontend/public/android-chrome-512x512.png" ]; then
+          cp frontend/public/android-chrome-512x512.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp frontend/public/android-chrome-512x512.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
         fi
         
-        # hdpi (72x72)
-        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
-          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
-        fi
-        
-        # xhdpi (96x96)
-        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
-          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
-        fi
-        
-        # xxhdpi (144x144)
         if [ -f "frontend/public/android-chrome-192x192.png" ]; then
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
           cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
         fi
         
-        # xxxhdpi (192x192)
-        if [ -f "frontend/public/android-chrome-192x192.png" ]; then
-          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          cp frontend/public/android-chrome-192x192.png frontend/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+        # For smaller sizes, use scaled versions of available icons
+        if [ -f "frontend/public/favicon-48x48.png" ]; then
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          cp frontend/public/favicon-48x48.png frontend/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
         fi
         
-        echo "✅ App icons copied"
+        echo "✅ Icons copied"
+    
+    - name: Update AndroidManifest.xml
+      working-directory: ./frontend/android/app/src/main
+      run: |
+        cat > AndroidManifest.xml << 'EOF'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.nalamudan.healthtracker">
+        
+            <application
+                android:allowBackup="true"
+                android:icon="@mipmap/ic_launcher"
+                android:label="@string/app_name"
+                android:roundIcon="@mipmap/ic_launcher_round"
+                android:supportsRtl="true"
+                android:theme="@style/AppTheme">
+                
+                <activity
+                    android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+                    android:name="com.nalamudan.healthtracker.MainActivity"
+                    android:label="@string/title_activity_main"
+                    android:theme="@style/AppTheme.NoActionBarLaunch"
+                    android:exported="true">
+                    
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+                
+            </application>
+        
+        </manifest>
+        EOF
+        echo "✅ AndroidManifest.xml updated"
+    
+    - name: Update MainActivity.java
+      working-directory: ./frontend/android/app/src/main/java/com/nalamudan/healthtracker
+      run: |
+        mkdir -p com/nalamudan/healthtracker
+        cat > com/nalamudan/healthtracker/MainActivity.java << 'EOF'
+        package com.nalamudan.healthtracker;
+        
+        import com.getcapacitor.BridgeActivity;
+        
+        public class MainActivity extends BridgeActivity {}
+        EOF
+        echo "✅ MainActivity.java created"
     
     - name: Update API URL
       working-directory: ./frontend
@@ -167,14 +230,8 @@ jobs:
         chmod +x gradlew
         ./gradlew assembleDebug --stacktrace
     
-    - name: Rename APK
-      run: |
-        if [ -f "frontend/android/app/build/outputs/apk/debug/app-debug.apk" ]; then
-          cp frontend/android/app/build/outputs/apk/debug/app-debug.apk frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
-        fi
-    
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: Nalamudan-APK
-        path: frontend/android/app/build/outputs/apk/debug/Nalamudan.apk
+        path: frontend/android/app/build/outputs/apk/debug/*.apk
