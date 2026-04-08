@@ -283,45 +283,30 @@ async def water_today(session_id: str):
 # ─── AI Endpoints ─────────────────────────────────────────────────────────────
 
 @app.get("/ai/nutrition")
+async def predict_nutrition(
+    food_name: str = Query(..., description="Food item name"),
+    quantity:  float = Query(default=100.0),
+):
+    """Search web + AI to predict nutrition values for a food item."""
+    agent  = get_agent()
+    result = await agent.predict_nutrition(food_name, quantity)
+    return {"success": True, "food_name": food_name, "quantity_g": quantity, "nutrition": result}
+
+
+@app.get("/ai/nutrition/serving")
 async def predict_nutrition_with_serving(
-    self, 
-    food_name: str, 
-    quantity: float = 1, 
-    unit: str = "serving"
-) -> Dict:
-    """Predict nutrition with dynamic serving size - NO HARDCODING"""
-    
-    # Use dynamic serving calculation
-    result = await get_nutrition_with_serving(food_name, quantity, unit)
-    
-    # If confidence is low and Groq is available, enhance with AI
-    if result.get("confidence") == "low" and self._client:
-        try:
-            prompt = f"""Return ONLY JSON for nutrition of {quantity} {unit} of {food_name} (approx {result.get('serving_grams', 150)}g):
-{{"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"cholesterol":0,"iron":0}}
-Use realistic values based on standard nutrition databases. Return ONLY JSON."""
-            
-            loop = asyncio.get_event_loop()
-            text, _ = await loop.run_in_executor(
-                None,
-                lambda: self._call_groq(
-                    [{"role": "user", "content": prompt}],
-                    max_tokens=200,
-                )
-            )
-            start, end = text.find("{"), text.rfind("}") + 1
-            if start != -1 and end:
-                import json
-                ai_data = json.loads(text[start:end])
-                for key in ["calories", "protein", "carbs", "fat", "fiber", "cholesterol", "iron"]:
-                    if result.get(key, 0) == 0 and ai_data.get(key, 0) > 0:
-                        result[key] = float(ai_data[key])
-                result["source"] = "web_search+ai"
-                result["confidence"] = "medium"
-        except Exception as e:
-            print(f"[AI] serving prediction error: {e}")
-    
-    return result
+    food_name: str = Query(..., description="Food item name"),
+    quantity: float = Query(default=1.0, description="Number of servings"),
+    unit: str = Query(default="serving", description="Serving unit (cup, bowl, piece, etc.)"),
+):
+    """
+    Get nutrition for specific serving size - dynamically calculated.
+    Updates when user changes quantity or unit. NO HARDCODING.
+    """
+    agent = get_agent()
+    result = await agent.predict_nutrition_with_serving(food_name, quantity, unit)
+    return {"success": True, "nutrition": result}
+
 
 @app.post("/ai/chat")
 async def ai_chat(req: ChatRequest):
