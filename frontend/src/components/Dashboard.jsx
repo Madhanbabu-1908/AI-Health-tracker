@@ -1,127 +1,264 @@
-import React, { useState, useEffect } from 'react'
-import { API_BASE_URL } from '../services/api'
+import React, { useState, useEffect, useCallback } from 'react'
+import { logApi, waterApi } from '../services/api'
 
-export default function Dashboard({ profile, nutritionGoals }) {
-  const [todayData, setTodayData] = useState({ 
-    totals: { protein: 0, carbs: 0, cholesterol: 0, iron: 0, calories: 0, cost: 0 },
-    percentages: { protein: 0, calories: 0, cholesterol: 0, iron: 0 }
-  })
-  const [loading, setLoading] = useState(true)
+// ─── Ring SVG ────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    fetchTodayData()
-    const interval = setInterval(fetchTodayData, 30000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchTodayData = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/today`)
-      const data = await response.json()
-      setTodayData(data)
-    } catch (error) {
-      console.error('Error:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const goals = nutritionGoals || {
-    protein_goal: 100,
-    calorie_goal: 2500,
-    cholesterol_limit: 300,
-    carb_limit: 300,
-    iron_goal: 15
-  }
-
-  if (loading) {
-    return (
-      <div className="loading">
-        <div>Loading your stats...</div>
-      </div>
-    )
-  }
-
-  const stats = [
-    { icon: '🥩', title: 'Protein', current: todayData.totals?.protein || 0, goal: goals.protein_goal, unit: 'g', color: '#667eea' },
-    { icon: '🍞', title: 'Carbs', current: todayData.totals?.carbs || 0, goal: goals.carb_limit || 300, unit: 'g', color: '#ffaa44' },
-    { icon: '🍳', title: 'Cholesterol', current: todayData.totals?.cholesterol || 0, goal: goals.cholesterol_limit, unit: 'mg', color: '#ff4444' },
-    { icon: '🩸', title: 'Iron', current: todayData.totals?.iron || 0, goal: goals.iron_goal, unit: 'mg', color: '#82ca9d' },
-    { icon: '🔥', title: 'Calories', current: todayData.totals?.calories || 0, goal: goals.calorie_goal, unit: 'cal', color: '#ff6b6b' },
-    { icon: '💰', title: 'Cost', current: todayData.totals?.cost || 0, goal: null, unit: '₹', color: '#4caf50' }
-  ]
-
-  // Calculate remaining protein
-  const remainingProtein = Math.max(0, goals.protein_goal - (todayData.totals?.protein || 0))
-  const proteinStatus = remainingProtein === 0 ? "✅ Goal met!" : `Need ${remainingProtein.toFixed(0)}g more`
-
+function Ring({ pct, color, size = 52, stroke = 5, label, value }) {
+  const r = (size - stroke * 2) / 2
+  const circ = 2 * Math.PI * r
+  const filled = Math.min(pct / 100, 1) * circ
   return (
-    <div className="dashboard">
-      {/* Daily Summary Card */}
-      <div className="summary-card" style={{
-        background: 'linear-gradient(135deg, #667eea, #764ba2)',
-        borderRadius: '20px',
-        padding: '20px',
-        marginBottom: '20px',
-        color: 'white'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <span style={{ fontSize: '14px', opacity: 0.9 }}>Today's Progress</span>
-          <span style={{ fontSize: '14px', fontWeight: '600' }}>{proteinStatus}</span>
-        </div>
-        <div style={{ fontSize: '32px', fontWeight: '700', marginBottom: '8px' }}>
-          {todayData.totals?.protein?.toFixed(0) || 0} / {goals.protein_goal}g
-        </div>
-        <div className="progress-bar" style={{ background: 'rgba(255,255,255,0.2)', height: '8px', borderRadius: '10px' }}>
-          <div className="progress-fill" style={{ 
-            width: `${Math.min((todayData.totals?.protein || 0) / goals.protein_goal * 100, 100)}%`,
-            background: 'white',
-            height: '8px',
-            borderRadius: '10px'
-          }} />
-        </div>
-      </div>
+    <div className="ring-item">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={r}
+          fill="none" stroke="var(--bg-elevated)" strokeWidth={stroke} />
+        <circle cx={size/2} cy={size/2} r={r}
+          fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${filled} ${circ}`}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dasharray 0.7s cubic-bezier(0.4,0,0.2,1)' }}
+        />
+        <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central"
+          fill="var(--text-primary)"
+          style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-display)' }}>
+          {Math.min(pct, 100).toFixed(0)}%
+        </text>
+      </svg>
+      <span className="ring-label">{label}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+        {value}
+      </span>
+    </div>
+  )
+}
 
-      <div className="stats-grid">
-        {stats.map((stat, index) => (
-          <div key={index} className="stat-card">
-            <div className="stat-header">
-              <h3>{stat.icon} {stat.title}</h3>
-              <span className="stat-value">
-                {stat.current.toFixed(1)}
-                <span className="stat-unit"> / {stat.goal ? stat.goal + stat.unit : ''}</span>
-              </span>
-            </div>
-            
-            {stat.goal && (
-              <div className="progress-container">
-                <div className="progress-bar">
-                  <div 
-                    className="progress-fill" 
-                    style={{ 
-                      width: `${Math.min((stat.current / stat.goal) * 100, 100)}%`,
-                      background: `linear-gradient(90deg, ${stat.color}, ${stat.color}dd)`
-                    }}
-                  />
-                </div>
-                <div className="progress-stats">
-                  <span className="progress-current">{Math.min((stat.current / stat.goal) * 100, 100).toFixed(0)}%</span>
-                  <span className="progress-goal">Goal: {stat.goal}{stat.unit}</span>
-                </div>
-              </div>
-            )}
+// ─── Stat row ────────────────────────────────────────────────────────────────
+
+function StatRow({ icon, label, current, goal, unit, color, bg }) {
+  const pct = goal > 0 ? Math.min((current / goal) * 100, 100) : 0
+  const rem = Math.max(0, goal - current)
+  return (
+    <div className="stat-row">
+      <div className="stat-icon" style={{ background: bg }}>{icon}</div>
+      <div className="stat-meta">
+        <div className="stat-name">
+          <span>{label}</span>
+          <span className="stat-numbers">
+            {current % 1 === 0 ? current : current.toFixed(1)}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+              {' '}/ {goal}{unit}
+            </span>
+          </span>
+        </div>
+        <div className="bar-track">
+          <div className="bar-fill" style={{ width: `${pct}%`, background: color }} />
+        </div>
+        {rem > 0 && (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+            {rem % 1 === 0 ? rem : rem.toFixed(1)}{unit} remaining
           </div>
-        ))}
-      </div>
-
-      <div className="ai-advice">
-        <h3>🤖 AI Coach Says:</h3>
-        <p>
-          {todayData.totals?.protein === 0 
-            ? "Start by logging your first meal! I'll provide personalized recommendations based on your nutrition goals."
-            : `Great progress! You've consumed ${todayData.totals?.protein.toFixed(0)}g of protein today. ${remainingProtein > 0 ? `Need ${remainingProtein.toFixed(0)}g more to reach your goal.` : 'You\'ve reached your protein goal! 🎉'}`}
-        </p>
+        )}
+        {rem === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 3 }}>✓ Goal reached!</div>
+        )}
       </div>
     </div>
   )
-      }
+}
+
+// ─── Water card ───────────────────────────────────────────────────────────────
+
+function WaterCard({ waterMl, goalL, sessionId, onLogWater }) {
+  const goalMl = goalL * 1000
+  const pct    = goalMl > 0 ? Math.min((waterMl / goalMl) * 100, 100) : 0
+  const remL   = Math.max(0, goalL - waterMl / 1000)
+
+  const PRESETS = [150, 200, 250, 350, 500]
+
+  return (
+    <div className="card water-card">
+      <div className="water-row">
+        <div className="water-visual">
+          <div className="water-fill" style={{ height: `${pct}%` }} />
+          <div className="water-pct-text">{pct.toFixed(0)}%</div>
+        </div>
+        <div className="water-info">
+          <div className="water-title">HYDRATION</div>
+          <div className="water-amounts">
+            {(waterMl / 1000).toFixed(2)}L / {goalL}L
+            {remL > 0.01 && (
+              <span style={{ color: 'var(--text-muted)' }}> · {remL.toFixed(1)}L left</span>
+            )}
+            {remL <= 0.01 && (
+              <span style={{ color: '#4dc9ff' }}> · Fully hydrated! 🎉</span>
+            )}
+          </div>
+          <div className="water-btns">
+            {PRESETS.map(ml => (
+              <button key={ml} className="water-btn" onClick={() => onLogWater(ml)}>
+                +{ml}ml
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Wealth card ──────────────────────────────────────────────────────────────
+
+function WealthCard({ today, weekHistory, currency }) {
+  const weekSpend = weekHistory.reduce((s, d) => s + (d.cost || 0), 0)
+  return (
+    <div className="card wealth-card">
+      <div className="card-title">Today's Spend</div>
+      <div className="wealth-row">
+        <div>
+          <div className="wealth-amount">{currency}{today.toFixed(0)}</div>
+          <div className="wealth-label">Food Budget</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 800, color: 'var(--warn)' }}>
+            {currency}{weekSpend.toFixed(0)}
+          </div>
+          <div className="wealth-label">7-day total</div>
+        </div>
+      </div>
+      {weekHistory.length > 0 && (
+        <div className="wealth-week">
+          Avg {currency}{(weekSpend / Math.max(weekHistory.length, 1)).toFixed(0)}/day this week
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
+
+export default function Dashboard({ profile, goals, sessionId, refreshKey }) {
+  const [data, setData]         = useState(null)
+  const [history, setHistory]   = useState([])
+  const [loading, setLoading]   = useState(true)
+
+  const load = useCallback(async () => {
+    try {
+      const [tod, hist] = await Promise.all([
+        logApi.today(sessionId),
+        logApi.history(sessionId, 7),
+      ])
+      setData(tod)
+      setHistory(hist)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }, [sessionId])
+
+  useEffect(() => { load() }, [load, refreshKey])
+  useEffect(() => {
+    const t = setInterval(load, 30000)
+    return () => clearInterval(t)
+  }, [load])
+
+  const handleWater = async (ml) => {
+    try {
+      await waterApi.log(sessionId, ml)
+      load()
+    } catch (e) { console.error(e) }
+  }
+
+  if (loading) return (
+    <div className="page">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="skeleton" style={{ height: 80, marginBottom: 12 }} />
+      ))}
+    </div>
+  )
+
+  const t  = data?.totals || {}
+  const g  = goals || {}
+  const pct = data?.percentages || {}
+  const waterMl = data?.water_ml || 0
+  const currency = profile?.currency || '₹'
+
+  // Protein status for hero
+  const proteinPct  = pct.protein || 0
+  const proteinRem  = Math.max(0, (g.protein_goal || 100) - (t.protein || 0))
+
+  return (
+    <div className="page">
+      {/* Hero */}
+      <div className="hero-card">
+        <div className="hero-label">Daily Protein</div>
+        <div className="hero-value">
+          {(t.protein || 0).toFixed(0)}
+          <span>/{g.protein_goal || 100}g</span>
+        </div>
+        <div className="hero-sub">
+          {proteinRem > 0
+            ? `${proteinRem.toFixed(0)}g more to hit your goal`
+            : '🏆 Protein goal achieved!'}
+        </div>
+        <div className="ring-wrap">
+          <Ring pct={pct.calories || 0}    color="#ffb347" label="Calories" value={`${(t.calories||0).toFixed(0)}kcal`} />
+          <Ring pct={pct.protein || 0}     color="#00e5a0" label="Protein"  value={`${(t.protein||0).toFixed(0)}g`} />
+          <Ring pct={pct.carbs || 0}       color="#4dc9ff" label="Carbs"    value={`${(t.carbs||0).toFixed(0)}g`} />
+          <Ring pct={pct.cholesterol || 0} color="#ff4d6d" label="Chol."    value={`${(t.cholesterol||0).toFixed(0)}mg`} />
+        </div>
+      </div>
+
+      {/* Detailed stats */}
+      <div className="card">
+        <div className="card-title">Macros & Micros</div>
+        <div className="stat-rows">
+          <StatRow icon="🔥" label="Calories"    current={t.calories||0}    goal={g.calorie_goal||2000}    unit="kcal" color="#ffb347" bg="rgba(255,179,71,0.12)" />
+          <StatRow icon="🥩" label="Protein"     current={t.protein||0}     goal={g.protein_goal||100}     unit="g"    color="#00e5a0" bg="rgba(0,229,160,0.1)" />
+          <StatRow icon="🍞" label="Carbs"       current={t.carbs||0}       goal={g.carb_goal||250}        unit="g"    color="#4dc9ff" bg="rgba(77,201,255,0.1)" />
+          <StatRow icon="🫐" label="Fat"         current={t.fat||0}         goal={g.fat_goal||65}          unit="g"    color="#b57bee" bg="rgba(181,123,238,0.1)" />
+          <StatRow icon="🌿" label="Fiber"       current={t.fiber||0}       goal={g.fiber_goal||25}        unit="g"    color="#82ca9d" bg="rgba(130,202,157,0.1)" />
+          <StatRow icon="🍳" label="Cholesterol" current={t.cholesterol||0} goal={g.cholesterol_limit||300} unit="mg" color="#ff4d6d" bg="rgba(255,77,109,0.1)" />
+          <StatRow icon="🩸" label="Iron"        current={t.iron||0}        goal={g.iron_goal||8}          unit="mg"   color="#e57373" bg="rgba(229,115,115,0.1)" />
+        </div>
+      </div>
+
+      {/* Water */}
+      <WaterCard
+        waterMl={waterMl}
+        goalL={g.water_goal || 2.5}
+        sessionId={sessionId}
+        onLogWater={handleWater}
+      />
+
+      {/* Wealth */}
+      <WealthCard
+        today={t.cost || 0}
+        weekHistory={history}
+        currency={currency}
+      />
+
+      {/* Today's food entries */}
+      {data?.entries?.length > 0 && (
+        <div className="card">
+          <div className="card-title">Today's Meals</div>
+          {data.entries.map((e, i) => (
+            <div key={i} className="food-item">
+              <div className="food-item-icon">🍽️</div>
+              <div className="food-item-info">
+                <div className="food-item-name">{e.name}</div>
+                <div className="food-item-meta">
+                  {e.protein?.toFixed(0)}g protein · {e.calories?.toFixed(0)} kcal · {currency}{e.cost?.toFixed(0)}
+                  <span style={{ color: 'var(--text-muted)' }}> · {e.quantity} {e.unit}</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {new Date(e.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

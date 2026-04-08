@@ -1,120 +1,190 @@
-import React, { useState } from 'react'
-import { API_BASE_URL } from '../services/api'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { aiApi } from '../services/api'
 
-export default function AIChat({ profile, nutritionGoals }) {
-  const [query, setQuery] = useState('')
-  const [response, setResponse] = useState('')
+const QUICK = [
+  'Am I on track today?',
+  'High protein meal ideas?',
+  'How to lower cholesterol?',
+  'Iron-rich foods for me?',
+  'Best pre-workout snack?',
+  'Analyse my week',
+  'How much water left?',
+  'Low-cost protein sources?',
+]
+
+function TypingDots() {
+  return (
+    <div style={{ display: 'flex', gap: 4, padding: '4px 0' }}>
+      {[0, 1, 2].map(i => (
+        <div key={i} style={{
+          width: 7, height: 7, borderRadius: '50%',
+          background: 'var(--text-muted)',
+          animation: 'pulse 1.2s ease-in-out infinite',
+          animationDelay: `${i * 0.2}s`,
+        }} />
+      ))}
+      <style>{`@keyframes pulse { 0%,80%,100%{opacity:.3} 40%{opacity:1} }`}</style>
+    </div>
+  )
+}
+
+export default function AIChat({ sessionId, profile, goals }) {
+  const [messages, setMessages] = useState([
+    {
+      role: 'ai',
+      text: `Hey ${profile?.nickname || 'there'}! 👋 I'm your AI health coach. Ask me anything about nutrition, your progress, or meal ideas.`,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      model: null,
+    }
+  ])
+  const [input, setInput]   = useState('')
   const [loading, setLoading] = useState(false)
-  const [conversation, setConversation] = useState([])
+  const bottomRef = useRef()
+  const textareaRef = useRef()
 
-  const askAI = async () => {
-    if (!query.trim()) return
-    
+  const scrollBottom = useCallback(() => {
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60)
+  }, [])
+
+  useEffect(() => { scrollBottom() }, [messages, scrollBottom])
+
+  const send = async (text) => {
+    const q = (text || input).trim()
+    if (!q || loading) return
+
+    setInput('')
+    setMessages(prev => [...prev, {
+      role: 'user',
+      text: q,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    }])
     setLoading(true)
-    setConversation(prev => [...prev, { role: 'user', content: query, time: new Date().toLocaleTimeString() }])
-    
+
     try {
-      const res = await fetch(`${API_BASE_URL}/ai/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          query: query,
-          context: {
-            profile: profile,
-            goals: nutritionGoals
-          }
-        })
-      })
-      const data = await res.json()
-      
-      const aiResponse = data.response || "I'm here to help with your nutrition goals! What would you like to know?"
-      setResponse(aiResponse)
-      setConversation(prev => [...prev, { 
-        role: 'assistant', 
-        content: aiResponse,
-        time: new Date().toLocaleTimeString()
+      const res = await aiApi.chat(sessionId, q)
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: res.response || 'Something went wrong. Please try again.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        model: res.model || null,
+        cached: res.cached || false,
+        blocked: res.blocked || false,
       }])
-      
-    } catch (error) {
-      const errorMsg = '❌ Error connecting to AI. Please try again.'
-      setResponse(errorMsg)
-      setConversation(prev => [...prev, { role: 'assistant', content: errorMsg, time: new Date().toLocaleTimeString() }])
+    } catch (e) {
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: '⚠️ Could not connect to AI. Check your internet connection and try again.',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        model: null,
+      }])
     } finally {
       setLoading(false)
-      setQuery('')
     }
   }
 
-  const quickQuestions = [
-    "How much protein do I need today?",
-    "What should I eat for better iron?",
-    "How to lower cholesterol naturally?",
-    "Suggest a high protein vegetarian meal",
-    "Am I on track with my goals?"
-  ]
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
 
   return (
-    <div className="ai-chat">
-      <h2>🤖 AI Health Coach</h2>
-      
-      {profile && (
-        <div className="profile-context">
-          <span>👤 Coaching {profile.nickname}</span>
-          <span>📊 BMI: {profile.bmi}</span>
-          <span>🎯 Goal: {nutritionGoals?.protein_goal || 72}g protein/day</span>
-        </div>
-      )}
-      
-      <div className="chat-messages">
-        {conversation.length === 0 ? (
-          <div className="welcome-message">
-            <p>👋 Hello! I'm your AI health coach.</p>
-            <p>Ask me about nutrition, meal planning, or your fitness goals!</p>
+    <div className="page" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
+      {/* Context strip */}
+      <div style={{
+        display: 'flex', gap: 8, flexWrap: 'wrap',
+        padding: '10px 0 12px',
+        borderBottom: '1px solid var(--border)',
+        marginBottom: 12,
+      }}>
+        {[
+          { icon: '👤', val: profile?.nickname },
+          { icon: '🎯', val: `${goals?.protein_goal || '--'}g protein` },
+          { icon: '🔥', val: `${goals?.calorie_goal || '--'} kcal` },
+          { icon: '⚖️',  val: `BMI ${profile?.bmi?.toFixed(1) || '--'}` },
+        ].map((s, i) => s.val && (
+          <div key={i} style={{
+            padding: '4px 10px', borderRadius: 20,
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500,
+          }}>
+            {s.icon} {s.val}
           </div>
-        ) : (
-          conversation.map((msg, idx) => (
-            <div key={idx} className={`message ${msg.role}`}>
-              <div className="message-content">{msg.content}</div>
-              <div className="message-time">{msg.time}</div>
+        ))}
+      </div>
+
+      {/* Quick prompts */}
+      <div className="quick-pill-row">
+        {QUICK.map(q => (
+          <button key={q} className="quick-pill" onClick={() => send(q)} disabled={loading}>
+            {q}
+          </button>
+        ))}
+      </div>
+
+      {/* Messages */}
+      <div className="chat-area" style={{ flex: 1 }}>
+        {messages.map((m, i) => (
+          <div key={i}>
+            <div className={`bubble ${m.role === 'user' ? 'bubble-user' : 'bubble-ai'}`}>
+              {m.text}
             </div>
-          ))
-        )}
+            <div style={{
+              display: 'flex',
+              justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 4,
+              marginBottom: 4,
+            }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{m.time}</span>
+              {m.model && m.model !== 'cache' && m.model !== 'offline' && (
+                <span className="model-tag">✦ {m.model}</span>
+              )}
+              {m.cached && (
+                <span className="model-tag" style={{ color: 'var(--text-muted)', borderColor: 'transparent', background: 'transparent' }}>
+                  cached
+                </span>
+              )}
+              {m.blocked && (
+                <span style={{ fontSize: 10, color: 'var(--danger)' }}>blocked</span>
+              )}
+            </div>
+          </div>
+        ))}
         {loading && (
-          <div className="message assistant">
-            <div className="message-content">🤔 Thinking...</div>
+          <div className="bubble bubble-ai">
+            <TypingDots />
           </div>
         )}
+        <div ref={bottomRef} />
       </div>
 
-      <div className="quick-questions">
-        <h4>Quick Questions:</h4>
-        <div className="quick-buttons">
-          {quickQuestions.map((q, idx) => (
-            <button key={idx} onClick={() => setQuery(q)} className="quick-btn">
-              {q}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="chat-input-area">
-        <input 
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask about nutrition, meals, or your progress..."
-          onKeyPress={(e) => e.key === 'Enter' && askAI()}
+      {/* Input */}
+      <div className="chat-input-row">
+        <textarea
+          ref={textareaRef}
+          className="chat-input"
+          placeholder="Ask about nutrition, meals, your progress..."
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          rows={1}
+          disabled={loading}
         />
-        <button onClick={askAI} disabled={loading}>
-          {loading ? '🤔' : '💬 Ask'}
+        <button
+          className="chat-send"
+          onClick={() => send()}
+          disabled={loading || !input.trim()}
+        >
+          {loading ? (
+            <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+          ) : '↑'}
         </button>
       </div>
 
-      {response && !loading && (
-        <div className="chat-response">
-          <p>{response}</p>
-        </div>
-      )}
+      <div style={{ height: 8 }} />
     </div>
   )
 }
