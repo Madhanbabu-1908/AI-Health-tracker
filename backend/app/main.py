@@ -23,7 +23,7 @@ from .ai_agent import get_agent
 
 # ─── App setup ───────────────────────────────────────────────────────────────
 
-app = FastAPI(title="AI Health & Wealth Tracker", version="4.0.0")
+app = FastAPI(title="Nalamudan | நலமுடன் API", version="4.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +43,7 @@ async def startup():
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "app": "AI Health & Wealth Tracker", "version": "4.0.0"}
+    return {"status": "ok", "app": "Nalamudan | நலமுடன்", "version": "4.0.0"}
 
 
 @app.get("/health")

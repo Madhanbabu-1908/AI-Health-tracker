@@ -171,7 +171,7 @@ class AIAgent:
         nickname  = profile.get("nickname", "User")
         currency  = profile.get("currency", "₹")
 
-        system = f"""You are a personal health and nutrition coach for {nickname}.
+        system = f"""You are the AI health coach inside Nalamudan (நலமுடன்), a personal health & wealth care app, coaching {nickname}.
 
 User profile: BMI {profile.get('bmi', 0):.1f}, age {profile.get('age', 25)}, 
 goal: {profile.get('primary_goal', 'maintain_weight')}, 
