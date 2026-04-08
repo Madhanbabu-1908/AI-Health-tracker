@@ -91,7 +91,7 @@ export default function Onboarding({ sessionId, onComplete }) {
         {/* Logo */}
         <div className="onboard-header">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 16 }}>
-            <div className="logo-icon" style={{ width: 44, height: 44, fontSize: 22 }}>🛡️</div>
+            <img src="/favicon.svg" alt="Nalamudan" style={{ width: 44, height: 44 }} />
             <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 800, letterSpacing: '0.02em' }}>
               NALAMU<span style={{ color: 'var(--accent)' }}>DAN</span>
             </div>
