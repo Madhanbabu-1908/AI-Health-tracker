@@ -1,375 +1,206 @@
-import React, { useState, useEffect } from 'react'
-import Dashboard from './components/Dashboard'
-import FoodLogger from './components/FoodLogger'
-import AddFood from './components/AddFood'
-import HistoryChart from './components/HistoryChart'
-import AIChat from './components/AIChat'
-import { API_BASE_URL } from './services/api'
+import React, { useState, useEffect, useCallback } from 'react'
+import { getSessionId } from './services/api'
+import { profileApi } from './services/api'
+import { useApp } from './context/AppContext'
+import Onboarding    from './components/Onboarding'
+import Dashboard     from './components/Dashboard'
+import FoodLogger    from './components/FoodLogger'
+import AddFood       from './components/AddFood'
+import HistoryChart  from './components/HistoryChart'
+import AIChat        from './components/AIChat'
+import Settings      from './components/Settings'
 
-function App() {
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [profile, setProfile] = useState(null)
-  const [nutritionGoals, setNutritionGoals] = useState(null)
-  const [profileInitialized, setProfileInitialized] = useState(false)
-  const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [showReset, setShowReset] = useState(false)
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-  
-  const [formData, setFormData] = useState({
-    nickname: '',
-    age: '',
-    gender: 'male',
-    height: '',
-    weight: '',
-    primary_goal: 'maintain_weight',
-    activity_level: 'moderate',
-    secondary_goals: []
-  })
+const NAV = [
+  { id: 'dashboard', icon: '📊', label: 'Today' },
+  { id: 'log',       icon: '🍽️', label: 'Log'   },
+  { id: 'add',       icon: '＋',  label: 'Add'   },
+  { id: 'history',   icon: '📈', label: 'Stats' },
+  { id: 'ai',        icon: '✦',  label: 'Coach' },
+  { id: 'settings',  icon: '⚙️', label: 'Me'    },
+]
 
-  const goalsList = [
-    { value: 'lose_weight', label: '🏃 Lose Weight', description: 'Gradually reduce body weight' },
-    { value: 'maintain_weight', label: '⚖️ Maintain Weight', description: 'Keep current healthy weight' },
-    { value: 'gain_muscle', label: '💪 Gain Muscle', description: 'Build lean muscle mass' },
-    { value: 'improve_endurance', label: '🏊 Improve Endurance', description: 'Boost stamina and energy' },
-    { value: 'lower_cholesterol', label: '❤️ Lower Cholesterol', description: 'Improve heart health' },
-    { value: 'increase_iron', label: '🩸 Increase Iron', description: 'Boost iron levels' }
-  ]
+function BMIPill({ bmi }) {
+  if (!bmi) return null
+  const [cls, label] =
+    bmi < 18.5 ? ['under', `${bmi.toFixed(1)} ↓`] :
+    bmi < 25   ? ['normal', bmi.toFixed(1)] :
+    bmi < 30   ? ['over', `${bmi.toFixed(1)} ↑`] :
+                 ['obese', `${bmi.toFixed(1)} ⚠`]
+  return <div className={`bmi-pill ${cls}`}>BMI {label}</div>
+}
 
-  const activityLevels = [
-    { value: 'sedentary', label: '🛋️ Sedentary', description: 'Little or no exercise, desk job' },
-    { value: 'light', label: '🚶 Light', description: 'Exercise 1-3 times per week' },
-    { value: 'moderate', label: '🏃 Moderate', description: 'Exercise 3-5 times per week' },
-    { value: 'active', label: '🏋️ Active', description: 'Exercise 6-7 times per week' },
-    { value: 'very_active', label: '⚡ Very Active', description: 'Physical job + daily exercise' }
-  ]
+export default function App() {
+  const [tab, setTab]           = useState('dashboard')
+  const [profile, setProfile]   = useState(null)
+  const [goals, setGoals]       = useState(null)
+  const [ready, setReady]       = useState(false)   // checked backend
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [connErr, setConnErr]   = useState(false)
 
-  useEffect(() => {
-    checkProfile()
-  }, [])
+  const sessionId = getSessionId()
+  const { appliedTheme, toggleTheme } = useApp()
 
-  useEffect(() => {
-    // Listen for food logged events
-    const handleFoodLogged = () => setRefreshTrigger(prev => prev + 1)
-    window.addEventListener('foodLogged', handleFoodLogged)
-    window.addEventListener('foodsUpdated', checkProfile)
-    return () => {
-      window.removeEventListener('foodLogged', handleFoodLogged)
-      window.removeEventListener('foodsUpdated', checkProfile)
-    }
-  }, [])
+  // ── Boot: try to fetch existing profile ──────────────────────────────────
 
-  const checkProfile = async () => {
-    setLoading(true)
-    setError('')
-    
+  const boot = useCallback(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/profile`)
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data && data.nickname) {
-          setProfile(data)
-          setShowReset(true)
-          
-          try {
-            const goalsResponse = await fetch(`${API_BASE_URL}/nutrition-goals`)
-            if (goalsResponse.ok) {
-              const goalsData = await goalsResponse.json()
-              setNutritionGoals(goalsData)
-            }
-          } catch (err) {
-            console.error('Error fetching goals:', err)
-          }
-          
-          setProfileInitialized(true)
-        } else {
-          setProfileInitialized(false)
-        }
-      } else if (response.status === 404) {
-        setProfileInitialized(false)
-        setShowReset(false)
+      const [p, g] = await Promise.all([
+        profileApi.get(sessionId),
+        profileApi.goals(sessionId),
+      ])
+      setProfile(p)
+      setGoals(g)
+      setLoggedIn(true)
+      setConnErr(false)
+    } catch (e) {
+      if (e.message?.includes('404') || e.message?.includes('not found')) {
+        setLoggedIn(false)
       } else {
-        setError(`Server error: ${response.status}`)
+        setConnErr(true)
       }
-    } catch (error) {
-      console.error('Connection error:', error)
-      setError(`Cannot connect to backend. Make sure backend is running.`)
     } finally {
-      setLoading(false)
+      setReady(true)
     }
+  }, [sessionId])
+
+  useEffect(() => { boot() }, [boot])
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const onOnboardComplete = (p, g) => {
+    setProfile(p)
+    setGoals(g)
+    setLoggedIn(true)
   }
 
-  const resetProfile = async () => {
-    if (confirm('⚠️ WARNING: This will permanently delete ALL your data including profile, food history, and custom foods. This cannot be undone. Are you sure?')) {
-      setLoading(true)
-      try {
-        const response = await fetch(`${API_BASE_URL}/reset-all-data`, { 
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' }
-        })
-        const data = await response.json()
-        
-        if (data.success) {
-          setProfile(null)
-          setNutritionGoals(null)
-          setProfileInitialized(false)
-          setShowReset(false)
-          alert('✅ All data has been reset successfully.')
-          window.location.reload()
-        } else {
-          alert('Failed to reset data: ' + (data.message || 'Unknown error'))
-        }
-      } catch (error) {
-        console.error('Error resetting data:', error)
-        alert('Error resetting data: ' + error.message)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const onFoodAction = () => setRefreshKey(k => k + 1)
+
+  const onReset = () => {
+    setProfile(null)
+    setGoals(null)
+    setLoggedIn(false)
+    setRefreshKey(k => k + 1)
   }
 
-  const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
-  }
+  // ── Loading ───────────────────────────────────────────────────────────────
 
-  const toggleSecondaryGoal = (goalValue) => {
-    setFormData(prev => {
-      const newSecondary = prev.secondary_goals.includes(goalValue)
-        ? prev.secondary_goals.filter(g => g !== goalValue)
-        : [...prev.secondary_goals, goalValue]
-      return { ...prev, secondary_goals: newSecondary }
-    })
-  }
-
-  const initializeProfile = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    
-    try {
-      if (!formData.nickname || !formData.height || !formData.weight || !formData.age) {
-        setError('Please fill all required fields')
-        setLoading(false)
-        return
-      }
-      
-      const heightCm = parseFloat(formData.height)
-      const weightKg = parseFloat(formData.weight)
-      
-      if (heightCm < 50 || heightCm > 250) {
-        setError('Height must be between 50cm and 250cm')
-        setLoading(false)
-        return
-      }
-      
-      if (weightKg < 20 || weightKg > 300) {
-        setError('Weight must be between 20kg and 300kg')
-        setLoading(false)
-        return
-      }
-      
-      const requestBody = {
-        nickname: formData.nickname,
-        height: heightCm,
-        weight: weightKg,
-        age: parseInt(formData.age),
-        gender: formData.gender,
-        primary_goal: formData.primary_goal,
-        activity_level: formData.activity_level,
-        secondary_goals: formData.secondary_goals
-      }
-      
-      const response = await fetch(`${API_BASE_URL}/user/setup-goals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setProfile(data.profile)
-        setNutritionGoals(data.nutrition_goals)
-        setProfileInitialized(true)
-        setShowReset(false)
-      } else {
-        setError(data.message || 'Failed to create profile')
-      }
-    } catch (error) {
-      console.error('Error setting up profile:', error)
-      setError(`Error: ${error.message}`)
-    }
-    setLoading(false)
-  }
-
-  if (loading) {
-    return (
-      <div className="app">
-        <header>
-          <h1>🤖 AI Health Tracker</h1>
-          <p>Personalized Nutrition Coach</p>
-        </header>
-        <div className="content">
-          <div className="loading">Loading...</div>
-        </div>
+  if (!ready) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', gap: 16 }}>
+      <div style={{ width: 48, height: 48, background: 'linear-gradient(135deg, var(--accent), var(--accent-dim))', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+        🏋️
       </div>
-    )
-  }
-
-  if (error && !profileInitialized) {
-    return (
-      <div className="app">
-        <header>
-          <h1>🤖 AI Health Tracker</h1>
-          <p>Personalized Nutrition Coach</p>
-        </header>
-        <div className="content">
-          <div className="error-message">
-            <h3>Connection Error</h3>
-            <p>{error}</p>
-            <button onClick={() => window.location.reload()}>Retry</button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!profileInitialized) {
-    return (
-      <div className="app">
-        <header>
-          <h1>🤖 AI Health Tracker</h1>
-          <p>Personalized Nutrition Coach</p>
-        </header>
-        <div className="content">
-          <div className="onboarding">
-            <h2>Welcome! Let's set up your profile</h2>
-            
-            {error && <div className="error-message">{error}</div>}
-            
-            {step === 1 && (
-              <form onSubmit={(e) => { e.preventDefault(); setStep(2); }}>
-                <h3>Basic Information</h3>
-                <input type="text" name="nickname" placeholder="Nickname" value={formData.nickname} onChange={handleInputChange} required />
-                <input type="number" name="age" placeholder="Age" value={formData.age} onChange={handleInputChange} required />
-                <select name="gender" value={formData.gender} onChange={handleInputChange}>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                </select>
-                <input type="number" name="height" placeholder="Height (cm) - e.g., 170" value={formData.height} onChange={handleInputChange} required />
-                <input type="number" name="weight" placeholder="Weight (kg) - e.g., 70" value={formData.weight} onChange={handleInputChange} required />
-                <button type="submit">Next →</button>
-              </form>
-            )}
-            
-            {step === 2 && (
-              <form onSubmit={(e) => { e.preventDefault(); setStep(3); }}>
-                <h3>What's your primary health goal?</h3>
-                <div className="goals-grid">
-                  {goalsList.map(goal => (
-                    <div key={goal.value} className={`goal-card ${formData.primary_goal === goal.value ? 'selected' : ''}`} onClick={() => setFormData({ ...formData, primary_goal: goal.value })}>
-                      <h4>{goal.label}</h4>
-                      <p>{goal.description}</p>
-                    </div>
-                  ))}
-                </div>
-                <button type="submit">Next →</button>
-              </form>
-            )}
-            
-            {step === 3 && (
-              <form onSubmit={(e) => { e.preventDefault(); setStep(4); }}>
-                <h3>What's your activity level?</h3>
-                <div className="activity-grid">
-                  {activityLevels.map(level => (
-                    <div key={level.value} className={`activity-card ${formData.activity_level === level.value ? 'selected' : ''}`} onClick={() => setFormData({ ...formData, activity_level: level.value })}>
-                      <h4>{level.label}</h4>
-                      <p>{level.description}</p>
-                    </div>
-                  ))}
-                </div>
-                <button type="submit">Next →</button>
-              </form>
-            )}
-            
-            {step === 4 && (
-              <form onSubmit={initializeProfile}>
-                <h3>Any secondary goals? (Optional)</h3>
-                <div className="secondary-goals">
-                  {goalsList.filter(g => g.value !== formData.primary_goal).map(goal => (
-                    <label key={goal.value} className="checkbox-label">
-                      <input type="checkbox" checked={formData.secondary_goals.includes(goal.value)} onChange={() => toggleSecondaryGoal(goal.value)} />
-                      {goal.label}
-                    </label>
-                  ))}
-                </div>
-                <button type="submit" disabled={loading}>{loading ? 'Creating your plan...' : 'Start My Journey 🚀'}</button>
-              </form>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const safeNutritionGoals = nutritionGoals || {
-    protein_goal: 72,
-    calorie_goal: 2200,
-    cholesterol_limit: 300,
-    carb_limit: 250,
-    iron_goal: 15,
-    fat_goal: 60,
-    fiber_goal: 25,
-    water_goal: 2.5
-  }
-
-  const getBMIColor = (bmi) => {
-    if (bmi < 18.5) return '#ffaa44'
-    if (bmi < 25) return '#4caf50'
-    if (bmi < 30) return '#ff9800'
-    return '#ff4444'
-  }
-
-  return (
-    <div className="app">
-      <header>
-        <h1>🤖 AI Health Tracker</h1>
-        <div className="header-stats">
-          <span>👤 {profile?.nickname || 'User'}</span>
-          <span className="bmi-badge" style={{ background: getBMIColor(profile?.bmi || 24) }}>
-            BMI: {profile?.bmi?.toFixed(1) || '--'}
-          </span>
-          <span>🎯 {safeNutritionGoals.protein_goal}g protein</span>
-        </div>
-      </header>
-
-      <div className="tabs">
-        <button className={activeTab === 'dashboard' ? 'active' : ''} onClick={() => setActiveTab('dashboard')}>📊 Dashboard</button>
-        <button className={activeTab === 'log' ? 'active' : ''} onClick={() => setActiveTab('log')}>🍽️ Log Food</button>
-        <button className={activeTab === 'add' ? 'active' : ''} onClick={() => setActiveTab('add')}>➕ Add Food</button>
-        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>📈 History</button>
-        <button className={activeTab === 'ai' ? 'active' : ''} onClick={() => setActiveTab('ai')}>🤖 AI Coach</button>
-      </div>
-
-      {showReset && (
-        <div style={{ padding: '10px 20px', textAlign: 'center' }}>
-          <button onClick={resetProfile} style={{ padding: '8px 16px', background: '#ff4444', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-            Reset All Data
-          </button>
-        </div>
-      )}
-
-      <div className="content">
-        {activeTab === 'dashboard' && <Dashboard profile={profile} nutritionGoals={safeNutritionGoals} refreshTrigger={refreshTrigger} />}
-        {activeTab === 'log' && <FoodLogger />}
-        {activeTab === 'add' && <AddFood />}
-        {activeTab === 'history' && <HistoryChart />}
-        {activeTab === 'ai' && <AIChat profile={profile} nutritionGoals={safeNutritionGoals} />}
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 800, color: 'var(--text-secondary)' }}>
+        Loading...
       </div>
     </div>
   )
-}
 
-export default App
+  // ── Connection error ──────────────────────────────────────────────────────
+
+  if (connErr) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', padding: 24, textAlign: 'center', gap: 16 }}>
+      <div style={{ fontSize: 48 }}>📡</div>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800 }}>
+        Can't reach server
+      </div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.5 }}>
+        The backend at Render.com might be sleeping (free tier). Wait 30 seconds and try again.
+      </div>
+      <button className="btn btn-primary" style={{ maxWidth: 220 }} onClick={boot}>
+        Retry
+      </button>
+    </div>
+  )
+
+  // ── Onboarding ────────────────────────────────────────────────────────────
+
+  if (!loggedIn) return (
+    <Onboarding sessionId={sessionId} onComplete={onOnboardComplete} />
+  )
+
+  // ── Main app ──────────────────────────────────────────────────────────────
+
+  const themeIcon = appliedTheme === 'dark' ? '☀️' : '🌙'
+
+  return (
+    <>
+      {/* Header */}
+      <header className="app-header">
+        <div className="app-logo">
+          <div className="logo-icon">🏋️</div>
+          <div className="logo-text">
+            HEALTH<span>+</span>
+          </div>
+        </div>
+        <div className="header-right">
+          <BMIPill bmi={profile?.bmi} />
+          <button
+            className="theme-btn"
+            onClick={() => toggleTheme(appliedTheme === 'dark' ? 'light' : 'dark')}
+            title="Toggle theme"
+          >
+            {themeIcon}
+          </button>
+        </div>
+      </header>
+
+      {/* Page content */}
+      {tab === 'dashboard' && (
+        <Dashboard
+          profile={profile} goals={goals}
+          sessionId={sessionId} refreshKey={refreshKey}
+        />
+      )}
+      {tab === 'log' && (
+        <FoodLogger
+          sessionId={sessionId}
+          onLogged={onFoodAction}
+          refreshKey={refreshKey}
+        />
+      )}
+      {tab === 'add' && (
+        <AddFood
+          sessionId={sessionId}
+          onFoodAdded={onFoodAction}
+        />
+      )}
+      {tab === 'history' && (
+        <HistoryChart
+          sessionId={sessionId}
+          goals={goals}
+          profile={profile}
+        />
+      )}
+      {tab === 'ai' && (
+        <AIChat
+          sessionId={sessionId}
+          profile={profile}
+          goals={goals}
+        />
+      )}
+      {tab === 'settings' && (
+        <Settings
+          profile={profile}
+          goals={goals}
+          sessionId={sessionId}
+          onReset={onReset}
+        />
+      )}
+
+      {/* Bottom nav */}
+      <nav className="bottom-nav">
+        {NAV.map(n => (
+          <button
+            key={n.id}
+            className={`nav-item ${tab === n.id ? 'active' : ''}`}
+            onClick={() => setTab(n.id)}
+          >
+            <span className="nav-icon">{n.icon}</span>
+            <span className="nav-label">{n.label}</span>
+          </button>
+        ))}
+      </nav>
+    </>
+  )
+}
