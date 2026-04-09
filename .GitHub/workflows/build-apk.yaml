@@ -1,1 +1,389 @@
+name: 🏥 Build Nalamudan APK
 
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Backend API URL (leave blank for default)'
+        required: false
+        default: 'https://ai-health-tracker-yycb.onrender.com'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Single job — ubuntu-latest, ~10-12 min total
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Node 20 ───────────────────────────────────────────────────────────
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── 3. Java 17 ───────────────────────────────────────────────────────────
+      - name: ☕ Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ── 4. Android SDK (fast, cached) ────────────────────────────────────────
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 Install Android platform tools
+        run: |
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;25.2.9519653" \
+            --verbose 2>/dev/null || true
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+      # ── 5. Install frontend dependencies ─────────────────────────────────────
+      - name: 📦 Install frontend dependencies
+        working-directory: frontend
+        run: |
+          npm ci --prefer-offline 2>/dev/null || npm install
+          echo "✅ npm packages installed"
+
+      # ── 6. Build Vite app with backend URL injected ───────────────────────────
+      - name: 🔨 Build React/Vite app
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ github.event.inputs.api_url || secrets.VITE_API_URL || 'https://ai-health-tracker-yycb.onrender.com' }}
+          NODE_ENV: production
+        run: |
+          npm run build
+          echo "✅ Vite build complete — dist/ size: $(du -sh dist/ | cut -f1)"
+
+      # ── 7. Capacitor: init (only if android/ doesn't exist) + sync ───────────
+      - name: 📱 Setup Capacitor Android project
+        working-directory: frontend
+        run: |
+          # Remove and re-create android folder for clean build
+          rm -rf android
+
+          # Init Capacitor with correct appId matching capacitor.config.json
+          npx cap init Nalamudan com.nalamudan.healthtracker \
+            --web-dir=dist 2>/dev/null || true
+
+          # Add Android platform
+          npx cap add android
+
+          echo "✅ Capacitor android project created"
+
+      # ── 8. Sync Capacitor (copies dist/ into android WebView) ────────────────
+      - name: 🔄 Sync Capacitor assets
+        working-directory: frontend
+        run: |
+          npx cap sync android
+          echo "✅ Capacitor sync complete"
+
+      # ── 9. Copy Nalamudan icons into all mipmap folders ───────────────────────
+      - name: 🎨 Install Nalamudan app icons
+        run: |
+          RES="frontend/android/app/src/main/res"
+
+          # Declare sizes in parallel arrays (bash 3 compat)
+          FOLDERS="mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi"
+          FILES="mipmap-mdpi/ic_launcher.png mipmap-hdpi/ic_launcher.png mipmap-xhdpi/ic_launcher.png mipmap-xxhdpi/ic_launcher.png mipmap-xxxhdpi/ic_launcher.png"
+
+          for folder in $FOLDERS; do
+            mkdir -p "$RES/$folder"
+            src="frontend/public/icons/$folder/ic_launcher.png"
+            if [ -f "$src" ]; then
+              cp "$src" "$RES/$folder/ic_launcher.png"
+              cp "$src" "$RES/$folder/ic_launcher_round.png"
+              echo "  ✅ $folder: $(identify -format '%wx%h' $src 2>/dev/null || echo 'copied')"
+            else
+              # Fallback: use largest available
+              echo "  ⚠️  $folder: source not found, using fallback"
+              [ -f "frontend/public/android-chrome-192x192.png" ] && \
+                cp frontend/public/android-chrome-192x192.png "$RES/$folder/ic_launcher.png" && \
+                cp frontend/public/android-chrome-192x192.png "$RES/$folder/ic_launcher_round.png"
+            fi
+          done
+
+      # ── 10. Copy splash screen ────────────────────────────────────────────────
+      - name: 🌅 Install splash screen
+        run: |
+          RES="frontend/android/app/src/main/res"
+          mkdir -p "$RES/drawable"
+
+          if [ -f "frontend/public/icons/splash.png" ]; then
+            cp frontend/public/icons/splash.png "$RES/drawable/splash.png"
+            echo "✅ splash.png copied"
+          fi
+
+          # Remove default Capacitor splash to avoid duplicate resource conflict
+          rm -f "$RES/drawable/splash.png.backup"
+
+      # ── 11. Android resource XMLs ─────────────────────────────────────────────
+      - name: 📝 Write Android resource files
+        run: |
+          RES="frontend/android/app/src/main/res"
+          mkdir -p "$RES/values"
+          mkdir -p "$RES/xml"
+
+          # strings.xml
+          cat > "$RES/values/strings.xml" << 'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nalamudan</string>
+    <string name="title_activity_main">Nalamudan</string>
+    <string name="custom_url_scheme">nalamudan</string>
+</resources>
+XML
+
+          # colors.xml
+          cat > "$RES/values/colors.xml" << 'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#1A237E</color>
+    <color name="colorPrimaryDark">#0D1757</color>
+    <color name="colorAccent">#00E5A0</color>
+    <color name="ic_launcher_background">#1A237E</color>
+    <color name="splash_background">#1A237E</color>
+</resources>
+XML
+
+          # styles.xml — Material theme, no action bar, dark status bar
+          cat > "$RES/values/styles.xml" << 'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>
+XML
+
+          # network_security_config.xml — allow Render.com HTTPS
+          cat > "$RES/xml/network_security_config.xml" << 'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">ai-health-tracker-yycb.onrender.com</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+XML
+
+          echo "✅ Resource XMLs written"
+
+      # ── 12. AndroidManifest.xml ───────────────────────────────────────────────
+      - name: 📋 Write AndroidManifest.xml
+        run: |
+          cat > "frontend/android/app/src/main/AndroidManifest.xml" << 'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nalamudan.healthtracker">
+
+    <!-- Network permissions for backend API calls -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:name="com.nalamudan.healthtracker.MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true"
+            android:screenOrientation="portrait">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- FileProvider for file sharing -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+</manifest>
+XML
+          echo "✅ AndroidManifest.xml written"
+
+      # ── 13. file_paths.xml for FileProvider ───────────────────────────────────
+      - name: 📂 Write file_paths.xml
+        run: |
+          XML_DIR="frontend/android/app/src/main/res/xml"
+          mkdir -p "$XML_DIR"
+          cat > "$XML_DIR/file_paths.xml" << 'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-path name="my_images" path="." />
+    <cache-path name="my_cache_files" path="." />
+</paths>
+XML
+          echo "✅ file_paths.xml written"
+
+      # ── 14. MainActivity.java ─────────────────────────────────────────────────
+      - name: ☕ Write MainActivity.java
+        run: |
+          JAVA_DIR="frontend/android/app/src/main/java/com/nalamudan/healthtracker"
+          mkdir -p "$JAVA_DIR"
+          cat > "$JAVA_DIR/MainActivity.java" << 'JAVA'
+package com.nalamudan.healthtracker;
+
+import com.getcapacitor.BridgeActivity;
+import android.os.Bundle;
+
+public class MainActivity extends BridgeActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+    }
+}
+JAVA
+          echo "✅ MainActivity.java written"
+
+      # ── 15. Fix local.properties with SDK path for Gradle ────────────────────
+      - name: 🔧 Configure Gradle SDK path
+        working-directory: frontend/android
+        run: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo "✅ local.properties: sdk.dir=$ANDROID_SDK_ROOT"
+
+      # ── 16. gradle.properties tweaks for faster build ─────────────────────────
+      - name: ⚡ Optimize Gradle properties
+        working-directory: frontend/android
+        run: |
+          cat >> gradle.properties << 'PROPS'
+org.gradle.jvmargs=-Xmx2048m -XX:+UseParallelGC
+org.gradle.caching=true
+org.gradle.parallel=true
+android.useAndroidX=true
+android.enableJetifier=true
+PROPS
+          echo "✅ Gradle properties optimised"
+
+      # ── 17. Build the debug APK ───────────────────────────────────────────────
+      - name: 🔨 Build debug APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --warning-mode all \
+            -Pandroid.injected.testOnly=false
+          echo "✅ APK built successfully"
+
+      # ── 18. Rename APK with version + date ───────────────────────────────────
+      - name: 🏷️ Rename APK
+        run: |
+          DATE=$(date +'%Y%m%d-%H%M')
+          SRC="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+          DEST="frontend/android/app/build/outputs/apk/debug/Nalamudan-v4-${DATE}.apk"
+          cp "$SRC" "$DEST"
+          echo "APK_PATH=$DEST" >> $GITHUB_ENV
+          echo "APK_NAME=Nalamudan-v4-${DATE}.apk" >> $GITHUB_ENV
+          SIZE=$(du -sh "$SRC" | cut -f1)
+          echo "✅ APK ready: $DEST ($SIZE)"
+
+      # ── 19. Upload as workflow artifact ──────────────────────────────────────
+      - name: 📤 Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nalamudan-APK
+          path: |
+            frontend/android/app/build/outputs/apk/debug/Nalamudan-*.apk
+            frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      # ── 20. Create GitHub Release (on every main push) ────────────────────────
+      - name: 🚀 Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4-${{ github.run_number }}
+          name: "Nalamudan நலமுடன் — Build #${{ github.run_number }}"
+          body: |
+            ## Nalamudan நலமுடன் — Health + Wealth Care Partner
+
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+            **Backend:** https://ai-health-tracker-yycb.onrender.com
+
+            ### What's included
+            - ✅ Multi-source nutrition AI (Open Food Facts + Web + Groq)
+            - ✅ Session-scoped health tracking (no login needed)
+            - ✅ Water intake tracker
+            - ✅ Food cost / wealth tracker
+            - ✅ 7/14/30-day history charts
+            - ✅ Dark / Light / System theme
+            - ✅ Nalamudan logo + branded splash screen
+
+            ### Install
+            Download the APK below → allow "Install from unknown sources" → install.
+          files: |
+            frontend/android/app/build/outputs/apk/debug/Nalamudan-*.apk
+          generate_release_notes: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 21. Summary ──────────────────────────────────────────────────────────
+      - name: 📊 Build summary
+        run: |
+          APK="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+          echo "## 🏥 Nalamudan APK Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| App Name | Nalamudan நலமுடன் |" >> $GITHUB_STEP_SUMMARY
+          echo "| App ID | com.nalamudan.healthtracker |" >> $GITHUB_STEP_SUMMARY
+          echo "| APK Size | $(du -sh $APK | cut -f1) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | https://ai-health-tracker-yycb.onrender.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| Min SDK | 24 (Android 7.0+) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Target SDK | 34 (Android 14) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
