@@ -1,16 +1,16 @@
 {
-  "appId": "com.nalamudan.app",
+  "appId": "com.nalamudan.healthtracker",
   "appName": "Nalamudan",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",
-    "cleartext": true,
+    "cleartext": false,
     "allowNavigation": [
       "https://ai-health-tracker-yycb.onrender.com"
     ]
   },
   "android": {
-    "allowMixedContent": true,
+    "allowMixedContent": false,
     "minSdkVersion": 24,
     "targetSdkVersion": 34,
     "buildOptions": {
@@ -19,7 +19,14 @@
   },
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 0
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#1A237E",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_INSIDE",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
     }
   }
 }
