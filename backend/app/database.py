@@ -383,3 +383,18 @@ def cache_response(query_hash: str, query: str, response: str):
                 SELECT query_hash FROM ai_cache ORDER BY cached_at DESC LIMIT 1000
             )
         """)
+
+
+# ─── Fuzzy food search ───────────────────────────────────────────────────────
+
+def search_food_items(session_id: str, query: str) -> list:
+    """Search food items by partial name match (case-insensitive)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT * FROM food_items
+               WHERE session_id=? AND LOWER(name) LIKE LOWER(?)
+               ORDER BY usage_count DESC, name ASC
+               LIMIT 20""",
+            (session_id, f"%{query}%")
+        ).fetchall()
+    return [dict(r) for r in rows]

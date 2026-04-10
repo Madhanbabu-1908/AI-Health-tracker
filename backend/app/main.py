@@ -23,7 +23,7 @@ from .ai_agent import get_agent
 
 # ─── App setup ───────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Nalamudan | நலமுடன் API", version="4.0.0")
+app = FastAPI(title="Nalamudan | நலமுடன் API", version="4.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +43,7 @@ async def startup():
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "app": "Nalamudan | நலமுடன்", "version": "4.0.0"}
+    return {"status": "ok", "app": "Nalamudan | நலமுடன்", "version": "4.1.0"}
 
 
 @app.get("/health")
@@ -125,9 +125,9 @@ async def get_goals(session_id: str):
 
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):
-    """Delete all user data for this session."""
+    """Delete ALL user data for this session (profile, food items, entries, water logs)."""
     db.delete_session(session_id)
-    return {"success": True, "message": "All data deleted"}
+    return {"success": True, "message": "All data permanently deleted"}
 
 
 # ─── Food Items ───────────────────────────────────────────────────────────────
@@ -135,6 +135,13 @@ async def delete_session(session_id: str):
 @app.get("/foods/{session_id}")
 async def list_foods(session_id: str):
     return {"foods": db.get_food_items(session_id)}
+
+
+@app.get("/foods/{session_id}/search")
+async def search_food_in_db(session_id: str, q: str = Query(..., description="Food name to search")):
+    """Search user's food DB by name (fuzzy)."""
+    results = db.search_food_items(session_id, q)
+    return {"foods": results, "count": len(results)}
 
 
 @app.post("/foods/{session_id}")
@@ -287,14 +294,54 @@ async def predict_nutrition(
     food_name: str   = Query(..., description="Food item name"),
     quantity:  float = Query(default=100.0, description="Grams or serving qty"),
     unit:      str   = Query(default="g",   description="Unit: g, serving, cup, etc."),
+    session_id: Optional[str] = Query(default=None, description="Session ID to check user's DB first"),
 ):
-    """Multi-source nutrition lookup: Open Food Facts + web + Groq AI fill."""
+    """
+    Smart nutrition lookup pipeline:
+    1. Check user's food DB (if session_id provided)
+    2. Ask LLM (Groq) with cuisine-aware prompt
+    3. Fall back to web search if LLM confidence is low
+    Returns confidence level so frontend can ask user to confirm before saving.
+    """
+    # Step 1: Check DB first
+    if session_id:
+        db_match = db.get_food_item_by_name(session_id, food_name)
+        if db_match:
+            return {
+                "success": True,
+                "food_name": food_name,
+                "source": "user_db",
+                "confidence": "high",
+                "from_db": True,
+                "db_food": db_match,
+                "nutrition": {
+                    "calories":    db_match["calories_per_unit"],
+                    "protein":     db_match["protein_per_unit"],
+                    "carbs":       db_match["carbs_per_unit"],
+                    "fat":         db_match["fat_per_unit"],
+                    "fiber":       db_match["fiber_per_unit"],
+                    "cholesterol": db_match["cholesterol_per_unit"],
+                    "iron":        db_match["iron_per_unit"],
+                    "source":      "user_db",
+                    "confidence":  "high",
+                }
+            }
+
+    # Step 2 & 3: LLM + web search pipeline
     agent = get_agent()
     if unit.lower() not in ("g", "gram", "grams"):
         result = await agent.predict_nutrition_with_serving(food_name, quantity, unit)
     else:
         result = await agent.predict_nutrition(food_name, quantity)
-    return {"success": True, "food_name": food_name, "quantity_g": quantity, "unit": unit, "nutrition": result}
+
+    return {
+        "success": True,
+        "food_name": food_name,
+        "quantity_g": quantity,
+        "unit": unit,
+        "from_db": False,
+        "nutrition": result
+    }
 
 
 @app.get("/ai/nutrition/serving")
@@ -302,11 +349,33 @@ async def predict_nutrition_with_serving(
     food_name: str   = Query(..., description="Food item name"),
     quantity:  float = Query(default=1.0, description="Number of servings"),
     unit:      str   = Query(default="serving", description="Serving unit"),
+    session_id: Optional[str] = Query(default=None, description="Session ID to check user's DB first"),
 ):
     """Resolve serving size dynamically then full nutrition lookup."""
+    # Step 1: Check DB first
+    if session_id:
+        db_match = db.get_food_item_by_name(session_id, food_name)
+        if db_match:
+            return {
+                "success": True,
+                "from_db": True,
+                "db_food": db_match,
+                "nutrition": {
+                    "calories":    db_match["calories_per_unit"] * quantity,
+                    "protein":     db_match["protein_per_unit"] * quantity,
+                    "carbs":       db_match["carbs_per_unit"] * quantity,
+                    "fat":         db_match["fat_per_unit"] * quantity,
+                    "fiber":       db_match["fiber_per_unit"] * quantity,
+                    "cholesterol": db_match["cholesterol_per_unit"] * quantity,
+                    "iron":        db_match["iron_per_unit"] * quantity,
+                    "source":      "user_db",
+                    "confidence":  "high",
+                }
+            }
+
     agent = get_agent()
     result = await agent.predict_nutrition_with_serving(food_name, quantity, unit)
-    return {"success": True, "nutrition": result}
+    return {"success": True, "from_db": False, "nutrition": result}
 
 
 @app.post("/ai/chat")
