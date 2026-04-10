@@ -38,6 +38,7 @@ export const profileApi = {
   setup:  (body) => api('/profile/setup', { method: 'POST', body: JSON.stringify(body) }),
   get:    (sid)  => api(`/profile/${sid}`),
   goals:  (sid)  => api(`/goals/${sid}`),
+  // Hard delete — removes profile + all related data via CASCADE
   delete: (sid)  => api(`/session/${sid}`, { method: 'DELETE' }),
 }
 
@@ -45,6 +46,7 @@ export const profileApi = {
 
 export const foodApi = {
   list:   (sid)        => api(`/foods/${sid}`),
+  search: (sid, q)     => api(`/foods/${sid}/search?q=${encodeURIComponent(q)}`),
   add:    (sid, item)  => api(`/foods/${sid}`, { method: 'POST', body: JSON.stringify(item) }),
   remove: (sid, id)    => api(`/foods/${sid}/${id}`, { method: 'DELETE' }),
 }
@@ -68,11 +70,17 @@ export const waterApi = {
 // ─── AI ──────────────────────────────────────────────────────────────────────
 
 export const aiApi = {
-  // Pass unit so the backend resolves serving size correctly
-  predict: (food_name, quantity = 100, unit = 'g') =>
-    api(`/ai/nutrition?food_name=${encodeURIComponent(food_name)}&quantity=${quantity}&unit=${encodeURIComponent(unit)}`),
-  predictServing: (food_name, quantity = 1, unit = 'serving') =>
-    api(`/ai/nutrition/serving?food_name=${encodeURIComponent(food_name)}&quantity=${quantity}&unit=${encodeURIComponent(unit)}`),
+  // Pass session_id so backend checks user DB first before LLM/web
+  predict: (food_name, quantity = 100, unit = 'g', session_id = null) => {
+    const params = new URLSearchParams({ food_name, quantity, unit })
+    if (session_id) params.append('session_id', session_id)
+    return api(`/ai/nutrition?${params}`)
+  },
+  predictServing: (food_name, quantity = 1, unit = 'serving', session_id = null) => {
+    const params = new URLSearchParams({ food_name, quantity, unit })
+    if (session_id) params.append('session_id', session_id)
+    return api(`/ai/nutrition/serving?${params}`)
+  },
   chat: (sid, query, context = {}) =>
     api('/ai/chat', { method: 'POST', body: JSON.stringify({ session_id: sid, query, context }) }),
 }
