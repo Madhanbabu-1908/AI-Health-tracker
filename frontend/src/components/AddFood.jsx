@@ -9,98 +9,166 @@ const EMPTY = {
   calories_per_unit: '', cost_per_unit: '',
 }
 
-// Confidence colour
 const CONF_STYLE = {
   high:   { color: '#00e5a0', label: '✓ High confidence' },
   medium: { color: '#ffb347', label: '~ Medium confidence — review values' },
   low:    { color: '#ff4d6d', label: '⚠ Low confidence — edit carefully' },
 }
 
-// Determine how to call the API based on unit type
 const GRAM_UNITS = new Set(['g', 'gram', 'grams', 'kg', 'kilo', 'kilogram',
                              'oz', 'ounce', 'ounces', 'lb', 'lbs'])
 
+// Pipeline stages
+const STAGE = {
+  IDLE:        'idle',
+  CHECKING_DB: 'checking_db',   // Step 1: user's food DB
+  ASKING_LLM:  'asking_llm',    // Step 2: LLM (Groq)
+  WEB_SEARCH:  'web_search',    // Step 3: web search
+  DONE:        'done',
+  ERROR:       'error',
+}
+
 export default function AddFood({ sessionId, onFoodAdded }) {
-  const [form, setForm]           = useState(EMPTY)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [saving, setSaving]       = useState(false)
-  const [aiMeta, setAiMeta]       = useState(null)   // { source, confidence, per_grams }
-  const [autoFill, setAutoFill]   = useState(true)   // auto-retrigger on unit change
-  const { showToast, ToastEl }    = useToast()
+  const [form, setForm]             = useState(EMPTY)
+  const [stage, setStage]           = useState(STAGE.IDLE)
+  const [saving, setSaving]         = useState(false)
+  const [aiMeta, setAiMeta]         = useState(null)
+  const [autoFill, setAutoFill]     = useState(true)
+  // Confirmation dialog state
+  const [pendingData, setPendingData] = useState(null)  // { nutrition, source, confidence, message }
+  const [showConfirm, setShowConfirm] = useState(false)
+  const { showToast, ToastEl }      = useToast()
   const nameRef   = useRef()
   const debouncer = useRef(null)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const isLoading = [STAGE.CHECKING_DB, STAGE.ASKING_LLM, STAGE.WEB_SEARCH].includes(stage)
 
-  // ── Core autofill logic ───────────────────────────────────────────────────
+  const applyNutrition = useCallback((n, meta) => {
+    setForm(f => ({
+      ...f,
+      calories_per_unit:    n.calories    > 0 ? String(+n.calories.toFixed(1))    : f.calories_per_unit,
+      protein_per_unit:     n.protein     > 0 ? String(+n.protein.toFixed(1))     : f.protein_per_unit,
+      carbs_per_unit:       n.carbs       > 0 ? String(+n.carbs.toFixed(1))       : f.carbs_per_unit,
+      fat_per_unit:         n.fat         > 0 ? String(+n.fat.toFixed(1))         : f.fat_per_unit,
+      fiber_per_unit:       n.fiber       > 0 ? String(+n.fiber.toFixed(1))       : f.fiber_per_unit,
+      cholesterol_per_unit: n.cholesterol > 0 ? String(+n.cholesterol.toFixed(1)) : f.cholesterol_per_unit,
+      iron_per_unit:        n.iron        > 0 ? String(+n.iron.toFixed(2))        : f.iron_per_unit,
+    }))
+    setAiMeta(meta)
+    setStage(STAGE.DONE)
+  }, [])
 
-  const runAutofill = useCallback(async (foodName, unit) => {
+  // ── Smart pipeline: DB → LLM → Web ──────────────────────────────────────
+
+  const runLookup = useCallback(async (foodName, unit) => {
     if (!foodName.trim()) return
-    setAiLoading(true)
     setAiMeta(null)
+    setShowConfirm(false)
+    setPendingData(null)
+
     try {
+      // ── Step 1: Check user's DB ─────────────────────────────────────────
+      setStage(STAGE.CHECKING_DB)
       const isGramUnit = GRAM_UNITS.has(unit.toLowerCase().trim())
+
       let res
       if (isGramUnit) {
-        // For gram-based units just look up per-100g
-        res = await aiApi.predict(foodName.trim(), 100, 'g')
+        res = await aiApi.predict(foodName.trim(), 100, 'g', sessionId)
       } else {
-        // For serving/cup/bowl etc — resolve weight first
-        res = await aiApi.predictServing(foodName.trim(), 1, unit)
+        res = await aiApi.predictServing(foodName.trim(), 1, unit, sessionId)
       }
 
-      if (res.success && res.nutrition) {
+      if (res.from_db && res.db_food) {
+        // Found in user's DB — apply directly, no confirmation needed
         const n = res.nutrition
-        setForm(f => ({
-          ...f,
-          calories_per_unit:    n.calories    > 0 ? String(+n.calories.toFixed(1))    : f.calories_per_unit,
-          protein_per_unit:     n.protein     > 0 ? String(+n.protein.toFixed(1))     : f.protein_per_unit,
-          carbs_per_unit:       n.carbs       > 0 ? String(+n.carbs.toFixed(1))       : f.carbs_per_unit,
-          fat_per_unit:         n.fat         > 0 ? String(+n.fat.toFixed(1))         : f.fat_per_unit,
-          fiber_per_unit:       n.fiber       > 0 ? String(+n.fiber.toFixed(1))       : f.fiber_per_unit,
-          cholesterol_per_unit: n.cholesterol > 0 ? String(+n.cholesterol.toFixed(1)) : f.cholesterol_per_unit,
-          iron_per_unit:        n.iron        > 0 ? String(+n.iron.toFixed(2))        : f.iron_per_unit,
-        }))
-        setAiMeta({
-          source:    n.source || 'ai',
-          confidence: n.confidence || 'medium',
-          per_grams: n.serving_grams || n.per_grams || 100,
+        applyNutrition(n, {
+          source: 'your food database',
+          confidence: 'high',
+          per_grams: res.db_food.calories_per_unit ? 'saved' : 100,
+          stage: 'db',
         })
-        const src = n.source?.includes('openfoodfacts') ? 'Open Food Facts'
-                  : n.source?.includes('web_page')      ? 'nutrition database'
-                  : n.source?.includes('web_search_high') ? 'web (high accuracy)'
-                  : n.source?.includes('web+ai')         ? 'web + AI'
-                  : 'AI estimate'
-        showToast(`Data from ${src} · check & adjust if needed`, 'info', 3500)
-      } else {
-        showToast('No data found — fill manually', 'error')
+        showToast(`Found "${foodName}" in your food database ✓`, 'success', 3000)
+        return
       }
+
+      // ── Step 2: LLM result came back (always attempted) ────────────────
+      const n = res.nutrition
+      const confidence = n?.confidence || 'low'
+      const source = n?.source || 'ai'
+
+      if (confidence === 'high' || (confidence === 'medium' && source.includes('openfoodfacts'))) {
+        // High quality data — apply directly
+        applyNutrition(n, {
+          source: _friendlySource(source),
+          confidence,
+          per_grams: n.serving_grams || n.per_grams || 100,
+          stage: 'llm',
+        })
+        showToast(`Data loaded · ${_friendlySource(source)}`, 'info', 3000)
+        return
+      }
+
+      // ── Step 3: Low/medium confidence — show confirmation ──────────────
+      setStage(STAGE.WEB_SEARCH)
+
+      const filled = _countFilled(n)
+      const confirmMsg = confidence === 'medium'
+        ? `AI found data for "${foodName}" with medium confidence. The values may not be exact — please review before saving.`
+        : `Low confidence data for "${foodName}". This may be approximate. Please verify and edit before saving.`
+
+      setPendingData({
+        nutrition: n,
+        source: _friendlySource(source),
+        confidence,
+        message: confirmMsg,
+        filled,
+      })
+      setShowConfirm(true)
+      setStage(STAGE.DONE)
+
     } catch (e) {
+      setStage(STAGE.ERROR)
       showToast('Lookup failed — fill manually', 'error')
-    } finally {
-      setAiLoading(false)
     }
-  }, [showToast])
+  }, [sessionId, applyNutrition, showToast])
+
+  // User confirms the pending data
+  const confirmData = () => {
+    if (!pendingData) return
+    applyNutrition(pendingData.nutrition, {
+      source: pendingData.source,
+      confidence: pendingData.confidence,
+      per_grams: pendingData.nutrition?.serving_grams || pendingData.nutrition?.per_grams || 100,
+      stage: 'confirmed',
+    })
+    setShowConfirm(false)
+    setPendingData(null)
+    showToast('Values applied — review and adjust if needed', 'info', 3000)
+  }
+
+  const rejectData = () => {
+    setShowConfirm(false)
+    setPendingData(null)
+    setStage(STAGE.IDLE)
+    showToast('Cleared — please fill values manually', 'info', 2500)
+  }
 
   // ── Debounced unit change auto-retrigger ─────────────────────────────────
 
   useEffect(() => {
     if (!autoFill) return
     if (!form.name.trim()) return
-    // Don't retrigger if unit is empty
     if (!form.default_unit.trim()) return
 
     if (debouncer.current) clearTimeout(debouncer.current)
     debouncer.current = setTimeout(() => {
-      runAutofill(form.name, form.default_unit)
-    }, 900)   // 900ms debounce after user stops typing unit
+      runLookup(form.name, form.default_unit)
+    }, 900)
 
     return () => clearTimeout(debouncer.current)
-  // Only retrigger when unit changes (not every form field change)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.default_unit])
-
-  // ── Manual AI Fill button ────────────────────────────────────────────────
 
   const autofill = () => {
     if (!form.name.trim()) {
@@ -108,16 +176,14 @@ export default function AddFood({ sessionId, onFoodAdded }) {
       nameRef.current?.focus()
       return
     }
-    runAutofill(form.name, form.default_unit || 'serving')
+    runLookup(form.name, form.default_unit || 'serving')
   }
-
-  // ── Name blur — auto-fill if no data yet ────────────────────────────────
 
   const onNameBlur = () => {
     if (!form.name.trim()) return
     const hasData = form.calories_per_unit || form.protein_per_unit
     if (!hasData && autoFill) {
-      runAutofill(form.name, form.default_unit || 'serving')
+      runLookup(form.name, form.default_unit || 'serving')
     }
   }
 
@@ -143,6 +209,7 @@ export default function AddFood({ sessionId, onFoodAdded }) {
       showToast(`"${form.name.trim()}" saved!`, 'success')
       setForm(EMPTY)
       setAiMeta(null)
+      setStage(STAGE.IDLE)
       onFoodAdded?.()
     } catch (e) {
       showToast(e.message || 'Save failed', 'error')
@@ -159,7 +226,6 @@ export default function AddFood({ sessionId, onFoodAdded }) {
 
       <div className="section-head">
         <span className="section-title">Add Food</span>
-        {/* Auto-fill toggle */}
         <button
           onClick={() => setAutoFill(v => !v)}
           style={{
@@ -193,11 +259,11 @@ export default function AddFood({ sessionId, onFoodAdded }) {
             <button
               className="ai-btn"
               onClick={autofill}
-              disabled={aiLoading}
+              disabled={isLoading}
               style={{ flexShrink: 0 }}
             >
-              {aiLoading
-                ? <><span className="spin" style={{ display:'inline-block' }}>⟳</span> Searching</>
+              {isLoading
+                ? <><span className="spin" style={{ display:'inline-block' }}>⟳</span> {_stageLabel(stage)}</>
                 : <><span>✦</span> AI Fill</>}
             </button>
           </div>
@@ -218,8 +284,27 @@ export default function AddFood({ sessionId, onFoodAdded }) {
           />
         </div>
 
-        {/* Confidence + source badge */}
-        {aiMeta && !aiLoading && (
+        {/* Loading state — show pipeline progress */}
+        {isLoading && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px', borderRadius: 12, marginTop: 4,
+            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+          }}>
+            <span style={{ animation: 'spin 1s linear infinite', display:'inline-block', fontSize: 18 }}>⟳</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--purple)' }}>
+                {_stageDescription(stage)}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                {_stageSub(stage)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confidence + source badge (after successful fill) */}
+        {aiMeta && !isLoading && !showConfirm && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '10px 14px', borderRadius: 12, marginTop: 4,
@@ -234,13 +319,13 @@ export default function AddFood({ sessionId, onFoodAdded }) {
                 {conf.label}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                Source: {aiMeta.source} · per {aiMeta.per_grams}g
+                Source: {aiMeta.source}
+                {aiMeta.stage === 'db' ? ' (from your database)' : ` · per ${aiMeta.per_grams}g`}
               </div>
             </div>
-            {/* Re-fetch button */}
             <button
               onClick={autofill}
-              disabled={aiLoading}
+              disabled={isLoading}
               style={{
                 marginLeft: 'auto', padding: '5px 12px', borderRadius: 20,
                 background: 'transparent', border: `1px solid ${conf.color}55`,
@@ -252,21 +337,81 @@ export default function AddFood({ sessionId, onFoodAdded }) {
           </div>
         )}
 
-        {/* Loading state */}
-        {aiLoading && (
+        {/* Confirmation dialog for low/medium confidence */}
+        {showConfirm && pendingData && (
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '10px 14px', borderRadius: 12, marginTop: 4,
-            background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+            padding: '14px', borderRadius: 12, marginTop: 8,
+            background: 'var(--bg-elevated)',
+            border: `1px solid ${pendingData.confidence === 'medium' ? '#ffb34755' : '#ff4d6d55'}`,
           }}>
-            <span style={{ animation: 'spin 1s linear infinite', display:'inline-block', fontSize: 18 }}>⟳</span>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--purple)' }}>
-                Searching Open Food Facts + Web + AI...
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 22 }}>
+                {pendingData.confidence === 'medium' ? '⚡' : '⚠️'}
+              </span>
+              <div>
+                <div style={{
+                  fontSize: 12, fontWeight: 700,
+                  color: pendingData.confidence === 'medium' ? '#ffb347' : '#ff4d6d',
+                  marginBottom: 4,
+                }}>
+                  {pendingData.confidence === 'medium' ? 'Medium confidence data found' : 'Low confidence data found'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {pendingData.message}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Source: {pendingData.source} · {pendingData.filled}/7 fields filled
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                Checking 3 sources simultaneously
-              </div>
+            </div>
+
+            {/* Preview values */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6,
+              padding: '10px', borderRadius: 8,
+              background: 'var(--bg-page)', marginBottom: 12,
+            }}>
+              {[
+                ['🔥', 'Cal', pendingData.nutrition?.calories, 'kcal'],
+                ['🥩', 'Pro', pendingData.nutrition?.protein, 'g'],
+                ['🍞', 'Carb', pendingData.nutrition?.carbs, 'g'],
+                ['🫐', 'Fat', pendingData.nutrition?.fat, 'g'],
+              ].map(([icon, label, val, unit]) => (
+                <div key={label} style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{icon} {label}</div>
+                  <div style={{
+                    fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)',
+                    color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                  }}>
+                    {val > 0 ? `${val.toFixed(1)}${unit}` : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={confirmData}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 10,
+                  background: 'rgba(0,229,160,0.1)',
+                  border: '1px solid rgba(0,229,160,0.4)',
+                  color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                ✓ Use these values
+              </button>
+              <button
+                onClick={rejectData}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 10,
+                  background: 'rgba(255,77,109,0.08)',
+                  border: '1px solid rgba(255,77,109,0.3)',
+                  color: 'var(--danger)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >
+                ✕ Fill manually
+              </button>
             </div>
           </div>
         )}
@@ -278,7 +423,8 @@ export default function AddFood({ sessionId, onFoodAdded }) {
           Nutrition per Serving
           {aiMeta && (
             <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 8 }}>
-              (for 1 {form.default_unit || 'serving'} ≈ {aiMeta.per_grams}g)
+              (for 1 {form.default_unit || 'serving'}
+              {aiMeta.stage !== 'db' ? ` ≈ ${aiMeta.per_grams}g` : ''})
             </span>
           )}
         </div>
@@ -321,28 +467,65 @@ export default function AddFood({ sessionId, onFoodAdded }) {
       <button
         className="btn btn-primary"
         onClick={save}
-        disabled={saving || aiLoading}
+        disabled={saving || isLoading || showConfirm}
         style={{ marginTop: 4 }}
       >
         {saving ? '⟳ Saving...' : '+ Save Food'}
       </button>
 
-      {/* Tips */}
       <div style={{
         margin: '14px 0 8px', padding: '12px 14px',
         background: 'var(--bg-elevated)', borderRadius: 12,
         fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6,
       }}>
-        <strong style={{ color: 'var(--text-secondary)' }}>Tips</strong><br />
-        · Type food name → data loads on blur<br />
-        · Change the unit (serving/cup/100g) → data updates automatically<br />
-        · Click <strong>↺ Retry</strong> if values look wrong<br />
-        · Always review AI-filled values before saving
+        <strong style={{ color: 'var(--text-secondary)' }}>How it works</strong><br />
+        1. Checks your saved food DB first (instant & accurate)<br />
+        2. Asks AI with cuisine-aware prompts (Groq LLM)<br />
+        3. Falls back to web search if AI is uncertain<br />
+        · You confirm before low-confidence data is applied
       </div>
 
       <div style={{ height: 16 }} />
     </div>
   )
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function _friendlySource(src) {
+  if (!src) return 'AI estimate'
+  if (src.includes('openfoodfacts'))    return 'Open Food Facts'
+  if (src.includes('web_page'))         return 'Nutrition database'
+  if (src.includes('web_search_high'))  return 'Web (high accuracy)'
+  if (src.includes('web+ai'))           return 'Web + AI'
+  if (src.includes('user_db'))          return 'Your database'
+  return 'AI estimate'
+}
+
+function _countFilled(n) {
+  if (!n) return 0
+  return ['calories','protein','carbs','fat','fiber','cholesterol','iron'].filter(k => n[k] > 0).length
+}
+
+function _stageLabel(stage) {
+  if (stage === STAGE.CHECKING_DB) return 'Checking DB'
+  if (stage === STAGE.ASKING_LLM)  return 'Asking AI'
+  if (stage === STAGE.WEB_SEARCH)  return 'Searching Web'
+  return 'Loading'
+}
+
+function _stageDescription(stage) {
+  if (stage === STAGE.CHECKING_DB) return 'Step 1: Checking your food database...'
+  if (stage === STAGE.ASKING_LLM)  return 'Step 2: Asking AI (Groq LLM)...'
+  if (stage === STAGE.WEB_SEARCH)  return 'Step 3: Searching the web...'
+  return 'Searching...'
+}
+
+function _stageSub(stage) {
+  if (stage === STAGE.CHECKING_DB) return 'Looking for exact match in your saved foods'
+  if (stage === STAGE.ASKING_LLM)  return 'Cuisine-aware nutrition prediction'
+  if (stage === STAGE.WEB_SEARCH)  return 'Open Food Facts + DuckDuckGo + page fetch'
+  return ''
 }
 
 // ─── Small nutrition field component ────────────────────────────────────────

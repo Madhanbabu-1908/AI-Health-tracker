@@ -16,14 +16,27 @@ export default function Settings({ profile, goals, sessionId, onReset }) {
 
   const handleDelete = async () => {
     const confirmed = window.confirm(
-      '⚠️ Delete ALL your data?\n\nThis removes your profile, food history, custom foods and water logs permanently. This cannot be undone.'
+      '⚠️ PERMANENTLY DELETE all data?\n\n' +
+      'This will remove from the server:\n' +
+      '• Your profile & nutrition goals\n' +
+      '• All food logs & history\n' +
+      '• Your custom food database\n' +
+      '• All water logs\n\n' +
+      'This CANNOT be undone. Are you sure?'
     )
     if (!confirmed) return
+
+    // Double-confirm for safety
+    const reconfirmed = window.confirm('Last chance — permanently delete everything?')
+    if (!reconfirmed) return
+
     setDeleting(true)
     try {
+      // DELETE /session/:id — cascades to all related tables on the server
       await profileApi.delete(sessionId)
+      // Clear local storage too
       clearSession()
-      showToast('All data deleted', 'info')
+      showToast('All data permanently deleted from server', 'info')
       setTimeout(() => onReset(), 800)
     } catch (e) {
       showToast('Delete failed: ' + e.message, 'error')
@@ -126,7 +139,10 @@ export default function Settings({ profile, goals, sessionId, onReset }) {
         <div className="settings-row">
           <div>
             <div className="settings-row-label">Session ID</div>
-            <div className="settings-row-sub">Stored in your browser. Clear app data to reset.</div>
+            <div className="settings-row-sub">
+              Your data is tied to this ID on the server.
+              Log out keeps data; Clear Data removes it permanently.
+            </div>
           </div>
         </div>
         <div style={{
@@ -144,11 +160,23 @@ export default function Settings({ profile, goals, sessionId, onReset }) {
       {/* Danger zone */}
       <div className="card" style={{ borderColor: 'rgba(255,77,109,0.2)' }}>
         <div className="card-title" style={{ color: 'var(--danger)' }}>Danger Zone</div>
-        <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
-          Deletes your profile, all food logs, custom foods, and water history. You'll go back to the setup screen. This cannot be undone.
+
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+          <strong>Clear All My Data</strong> permanently removes your profile, food logs,
+          custom food database, and water history from the server. This cannot be undone.
         </div>
+
+        <div style={{
+          padding: '10px 12px', borderRadius: 10, marginBottom: 14,
+          background: 'rgba(255,77,109,0.06)', border: '1px solid rgba(255,77,109,0.15)',
+          fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6,
+        }}>
+          💡 <strong>Just want to switch devices?</strong> Use <em>Log out</em> (top right) instead.
+          Your data stays on the server and you can log back in with your session ID.
+        </div>
+
         <button className="btn btn-danger" onClick={handleDelete} disabled={deleting} style={{ width: '100%' }}>
-          {deleting ? '⟳ Deleting...' : '🗑 Clear All My Data'}
+          {deleting ? '⟳ Deleting from server...' : '🗑 Permanently Delete All My Data'}
         </button>
       </div>
 
