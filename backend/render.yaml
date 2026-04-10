@@ -8,8 +8,8 @@ services:
       - key: GROQ_API_KEY
         sync: false
       - key: DB_PATH
-        value: /opt/render/project/src/data/health_tracker.db
+        value: /data/health_tracker.db
     disk:
       name: health-data
-      mountPath: /opt/render/project/src/data
+      mountPath: /data
       sizeGB: 1
