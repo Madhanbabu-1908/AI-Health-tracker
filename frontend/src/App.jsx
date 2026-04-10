@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { getSessionId } from './services/api'
+import { getSessionId, clearSession } from './services/api'
 import { profileApi } from './services/api'
 import { useApp } from './context/AppContext'
 import Onboarding    from './components/Onboarding'
@@ -37,6 +37,7 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [connErr, setConnErr]   = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
 
   const sessionId = getSessionId()
   const { appliedTheme, toggleTheme } = useApp()
@@ -79,6 +80,20 @@ export default function App() {
     setRefreshKey(k => k + 1)
   }
 
+  // Log out: just clear local session, data stays on server
+  const handleLogout = () => {
+    setLoggingOut(true)
+    clearSession()
+    // Small delay for visual feedback
+    setTimeout(() => {
+      setProfile(null)
+      setGoals(null)
+      setLoggedIn(false)
+      setLoggingOut(false)
+      setTab('dashboard')
+    }, 300)
+  }
+
   if (!ready) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', gap: 16 }}>
       <img src="/favicon.svg" alt="Nalamudan" style={{ width: 48, height: 48 }} />
@@ -111,7 +126,7 @@ export default function App() {
 
   return (
     <>
-      {/* Header with Lotus Icon */}
+      {/* Header */}
       <header className="app-header">
         <div className="app-logo">
           <img src="/favicon.svg" alt="Nalamudan" className="logo-icon" />
@@ -127,6 +142,36 @@ export default function App() {
             title="Toggle theme"
           >
             {themeIcon}
+          </button>
+          {/* Logout button */}
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            title="Log out (your data stays safe)"
+            style={{
+              padding: '6px 12px',
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 600,
+              background: 'transparent',
+              border: '1px solid var(--border)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--danger)'
+              e.currentTarget.style.color = 'var(--danger)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--border)'
+              e.currentTarget.style.color = 'var(--text-muted)'
+            }}
+          >
+            {loggingOut ? '...' : '⏏ Log out'}
           </button>
         </div>
       </header>
