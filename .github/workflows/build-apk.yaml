@@ -275,20 +275,26 @@ jobs:
       - name: Add Health Connect dependency to app build.gradle
         run: |
           python3 << 'PYEOF'
-          import re
+          import re, os
 
           gradle_path = "frontend/android/app/build.gradle"
           with open(gradle_path, "r") as f:
               content = f.read()
 
-          # Capacitor uses 'minSdk' (not 'minSdkVersion') in newer versions
+          print("=== ORIGINAL build.gradle ===")
+          print(content)
+          print("===========================")
+
+          # Patch every numeric minSdk variant
           content = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 26', content)
-          content = re.sub(r'(?<!Version )minSdk\s+\d+', 'minSdk 26', content)
+          content = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 26', content)
+          content = re.sub(r'(minSdk\s+)\d+', r'\g<1>26', content)
 
           content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 34', content)
-          content = re.sub(r'(?<!Version )compileSdk\s+\d+', 'compileSdk 34', content)
+          content = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 34', content)
+          content = re.sub(r'(compileSdk\s+)\d+', r'\g<1>34', content)
 
-          # Use 1.0.0-alpha11 — last version compatible with compileSdk 34 + AGP 8.2.1
+          # Add Health Connect dependency if missing
           hc_dep = '    implementation "androidx.health.connect:connect-client:1.0.0-alpha11"'
           if 'androidx.health.connect' not in content:
               content = content.replace(
@@ -298,7 +304,31 @@ jobs:
 
           with open(gradle_path, "w") as f:
               f.write(content)
-          print("build.gradle updated with Health Connect dependency")
+          print("=== PATCHED build.gradle ===")
+          print(content)
+          print("build.gradle updated")
+          PYEOF
+
+      - name: Patch variables.gradle minSdkVersion
+        run: |
+          python3 << 'PYEOF'
+          import re, os
+
+          # Capacitor stores minSdkVersion in variables.gradle
+          var_path = "frontend/android/variables.gradle"
+          if os.path.exists(var_path):
+              with open(var_path, "r") as f:
+                  content = f.read()
+              print("=== ORIGINAL variables.gradle ===")
+              print(content)
+              content = re.sub(r'minSdkVersion\s*=\s*\d+', 'minSdkVersion = 26', content)
+              content = re.sub(r'compileSdkVersion\s*=\s*\d+', 'compileSdkVersion = 34', content)
+              with open(var_path, "w") as f:
+                  f.write(content)
+              print("=== PATCHED variables.gradle ===")
+              print(content)
+          else:
+              print("variables.gradle not found")
           PYEOF
 
       - name: Configure Gradle
