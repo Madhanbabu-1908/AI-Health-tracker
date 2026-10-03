@@ -170,8 +170,7 @@ jobs:
           python3 << 'PYEOF'
           content = (
               '<?xml version="1.0" encoding="utf-8"?>\n'
-              '<manifest xmlns:android="http://schemas.android.com/apk/res/android"\n'
-              '    package="com.nalamudan.healthtracker">\n'
+              '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
               '\n'
               '    <uses-permission android:name="android.permission.INTERNET" />\n'
               '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
@@ -282,11 +281,12 @@ jobs:
           with open(gradle_path, "r") as f:
               content = f.read()
 
+          # Capacitor uses 'minSdk' (not 'minSdkVersion') in newer versions
           content = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 26', content)
+          content = re.sub(r'(?<!Version )minSdk\s+\d+', 'minSdk 26', content)
 
-          # Bump compileSdkVersion to 34 explicitly (already default but ensure it)
           content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 34', content)
-          content = re.sub(r'compileSdk\s+\d+', 'compileSdk 34', content)
+          content = re.sub(r'(?<!Version )compileSdk\s+\d+', 'compileSdk 34', content)
 
           # Use 1.0.0-alpha11 — last version compatible with compileSdk 34 + AGP 8.2.1
           hc_dep = '    implementation "androidx.health.connect:connect-client:1.0.0-alpha11"'
