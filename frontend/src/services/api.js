@@ -14,9 +14,19 @@ export function getSessionId() {
 }
 
 export function clearSession() {
+  localStorage.setItem('health_returning', '1')
   localStorage.removeItem('health_session_id')
   localStorage.removeItem('health_profile')
   localStorage.removeItem('health_goals')
+}
+
+export function isReturningUser() {
+  return localStorage.getItem('health_returning') === '1'
+}
+
+export function restoreSession(sessionId) {
+  localStorage.setItem('health_session_id', sessionId)
+  localStorage.removeItem('health_returning')
 }
 
 // ─── Core fetch wrapper ───────────────────────────────────────────────────────
@@ -35,11 +45,11 @@ async function api(path, options = {}) {
 // ─── Profile ─────────────────────────────────────────────────────────────────
 
 export const profileApi = {
-  setup:  (body) => api('/profile/setup', { method: 'POST', body: JSON.stringify(body) }),
-  get:    (sid)  => api(`/profile/${sid}`),
-  goals:  (sid)  => api(`/goals/${sid}`),
-  // Hard delete — removes profile + all related data via CASCADE
-  delete: (sid)  => api(`/session/${sid}`, { method: 'DELETE' }),
+  setup:      (body)     => api('/profile/setup', { method: 'POST', body: JSON.stringify(body) }),
+  get:        (sid)      => api(`/profile/${sid}`),
+  goals:      (sid)      => api(`/goals/${sid}`),
+  byNickname: (nickname) => api(`/profile/by-nickname/${encodeURIComponent(nickname)}`),
+  delete:     (sid)      => api(`/session/${sid}`, { method: 'DELETE' }),
 }
 
 // ─── Foods ───────────────────────────────────────────────────────────────────

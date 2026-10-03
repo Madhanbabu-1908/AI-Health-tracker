@@ -131,6 +131,15 @@ def save_profile(profile: UserProfile):
         ))
 
 
+def get_profile_by_nickname(nickname: str) -> Optional[Dict]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM profiles WHERE LOWER(nickname)=LOWER(?) ORDER BY updated_at DESC LIMIT 1",
+            (nickname,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_profile(session_id: str) -> Optional[Dict]:
     with get_conn() as conn:
         row = conn.execute(

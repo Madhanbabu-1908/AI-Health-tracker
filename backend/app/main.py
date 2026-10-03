@@ -107,6 +107,16 @@ async def setup_profile(req: ProfileSetupRequest):
     }
 
 
+@app.get("/profile/by-nickname/{nickname}")
+async def get_profile_by_nickname(nickname: str):
+    """Look up a profile by nickname for returning-user login."""
+    profile = db.get_profile_by_nickname(nickname.strip())
+    if not profile:
+        raise HTTPException(404, "No profile found with that nickname")
+    goals = db.get_nutrition_goals(profile["session_id"])
+    return {"profile": profile, "goals": goals}
+
+
 @app.get("/profile/{session_id}")
 async def get_profile(session_id: str):
     profile = db.get_profile(session_id)

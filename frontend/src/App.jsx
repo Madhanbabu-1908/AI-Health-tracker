@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { getSessionId, clearSession } from './services/api'
+import { getSessionId, clearSession, isReturningUser } from './services/api'
 import { profileApi } from './services/api'
 import { useApp } from './context/AppContext'
 import Onboarding    from './components/Onboarding'
+import LoginScreen   from './components/LoginScreen'
 import Dashboard     from './components/Dashboard'
 import FoodLogger    from './components/FoodLogger'
 import AddFood       from './components/AddFood'
@@ -35,6 +36,7 @@ export default function App() {
   const [goals, setGoals]       = useState(null)
   const [ready, setReady]       = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
+  const [returning, setReturning] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [connErr, setConnErr]   = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -55,6 +57,7 @@ export default function App() {
     } catch (e) {
       if (e.message?.includes('404') || e.message?.includes('not found')) {
         setLoggedIn(false)
+        setReturning(isReturningUser())
       } else {
         setConnErr(true)
       }
@@ -64,6 +67,13 @@ export default function App() {
   }, [sessionId])
 
   useEffect(() => { boot() }, [boot])
+
+  const onLoginComplete = (p, g) => {
+    setProfile(p)
+    setGoals(g)
+    setLoggedIn(true)
+    setReturning(false)
+  }
 
   const onOnboardComplete = (p, g) => {
     setProfile(p)
@@ -77,6 +87,7 @@ export default function App() {
     setProfile(null)
     setGoals(null)
     setLoggedIn(false)
+    setReturning(true)
     setRefreshKey(k => k + 1)
   }
 
@@ -84,11 +95,11 @@ export default function App() {
   const handleLogout = () => {
     setLoggingOut(true)
     clearSession()
-    // Small delay for visual feedback
     setTimeout(() => {
       setProfile(null)
       setGoals(null)
       setLoggedIn(false)
+      setReturning(true)
       setLoggingOut(false)
       setTab('dashboard')
     }, 300)
@@ -118,9 +129,9 @@ export default function App() {
     </div>
   )
 
-  if (!loggedIn) return (
-    <Onboarding sessionId={sessionId} onComplete={onOnboardComplete} />
-  )
+  if (!loggedIn) return returning
+    ? <LoginScreen onLogin={onLoginComplete} onNewUser={() => setReturning(false)} />
+    : <Onboarding sessionId={sessionId} onComplete={onOnboardComplete} />
 
   const themeIcon = appliedTheme === 'dark' ? '☀️' : '🌙'
 
