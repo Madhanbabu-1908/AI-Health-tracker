@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import database as db
 from .models import (
     ProfileSetupRequest, FoodItem, FoodEntry,
-    WaterLog, ChatRequest,
+    WaterLog, ChatRequest, HealthSyncRequest,
 )
 from .goal_calculator import calculate_all_goals
 from .ai_agent import get_agent
@@ -396,14 +396,133 @@ async def ai_chat(req: ChatRequest):
     today    = db.get_today_totals(req.session_id)
     water_ml = db.get_today_water_ml(req.session_id)
 
+    # Optionally inject health context if available
+    health_today   = db.get_today_health_summary(req.session_id)
+    health_baseline = db.get_health_baseline(req.session_id, days=14)
+
     context = {
-        "profile":  profile,
-        "goals":    goals,
-        "today":    today,
-        "water_ml": water_ml,
+        "profile":         profile,
+        "goals":           goals,
+        "today":           today,
+        "water_ml":        water_ml,
+        "health_today":    health_today,
+        "health_baseline": health_baseline,
         **(req.context or {}),
     }
 
     agent  = get_agent()
     result = await agent.chat(req.query, context)
     return result
+
+
+# ─── Health Connect API ───────────────────────────────────────────────────────
+
+@app.post("/health/{session_id}/sync")
+async def sync_health_data(session_id: str, req: HealthSyncRequest):
+    """
+    Receive normalized health data from the Android app.
+    Deduplicates by source_id — safe to call repeatedly (idempotent).
+    """
+    profile = db.get_profile(session_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    inserted_metrics  = 0
+    inserted_sleep    = 0
+    inserted_workouts = 0
+    skipped           = 0
+
+    for m in req.metrics:
+        ok = db.upsert_health_metric(session_id, m.model_dump())
+        if ok:
+            inserted_metrics += 1
+        else:
+            skipped += 1
+
+    for s in req.sleep:
+        ok = db.upsert_sleep_session(session_id, s.model_dump())
+        if ok:
+            inserted_sleep += 1
+        else:
+            skipped += 1
+
+    for w in req.workouts:
+        ok = db.upsert_workout(session_id, w.model_dump())
+        if ok:
+            inserted_workouts += 1
+        else:
+            skipped += 1
+
+    sync_time = req.sync_time or datetime.now().isoformat()
+    db.upsert_health_sync_state(session_id, req.provider, "success", sync_time)
+
+    return {
+        "success":           True,
+        "inserted_metrics":  inserted_metrics,
+        "inserted_sleep":    inserted_sleep,
+        "inserted_workouts": inserted_workouts,
+        "skipped_duplicates": skipped,
+        "sync_time":         sync_time,
+    }
+
+
+@app.get("/health/{session_id}/summary")
+async def get_health_summary(session_id: str):
+    """Today's health snapshot + sync state."""
+    profile = db.get_profile(session_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    summary   = db.get_today_health_summary(session_id)
+    baseline  = db.get_health_baseline(session_id, days=14)
+    sync_state = db.get_health_sync_state(session_id, "health_connect")
+
+    # Compute deltas vs 14-day baseline (only where both values exist)
+    deltas = {}
+    for key in ["steps", "average_heart_rate", "resting_heart_rate",
+                "hrv", "sleep_duration_minutes", "active_calories"]:
+        today_val    = summary.get(key)
+        baseline_val = baseline.get(key)
+        if today_val is not None and baseline_val and baseline_val > 0:
+            deltas[key] = round(((today_val - baseline_val) / baseline_val) * 100, 1)
+
+    return {
+        "today":      summary,
+        "baseline_14d": baseline,
+        "deltas":     deltas,
+        "sync_state": sync_state,
+    }
+
+
+@app.get("/health/{session_id}/history")
+async def get_health_history(
+    session_id: str,
+    days: int = Query(default=14, ge=1, le=90),
+):
+    """Per-day aggregated health history for charts."""
+    profile = db.get_profile(session_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    return db.get_health_history(session_id, days)
+
+
+@app.delete("/health/{session_id}/data")
+async def delete_health_data(session_id: str):
+    """
+    Delete all imported health data for this session.
+    Profile and nutrition data are NOT affected.
+    """
+    profile = db.get_profile(session_id)
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+
+    db.delete_health_data(session_id)
+    return {"success": True, "message": "All health data deleted. Nutrition data is intact."}
+
+
+@app.get("/health/{session_id}/sync-state")
+async def get_sync_state(session_id: str):
+    state = db.get_health_sync_state(session_id, "health_connect")
+    return state or {"session_id": session_id, "provider": "health_connect",
+                     "last_sync_at": None, "last_sync_status": "never"}

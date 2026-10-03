@@ -143,3 +143,81 @@ class NutritionPrediction(BaseModel):
     calories:    float = 0
     source:      str   = "ai_prediction"
     confidence:  str   = "medium"
+
+
+# ─── Health Connect Models ────────────────────────────────────────────────────
+
+class HealthMetric(BaseModel):
+    """Normalized health metric from any provider."""
+    provider:    str                      # e.g. "health_connect"
+    source:      Optional[str]  = None    # e.g. "fitbit", "samsung_health"
+    device:      Optional[str]  = None    # e.g. "fitbit_air"
+    metric_type: str                      # e.g. "steps", "heart_rate"
+    value:       Optional[float] = None
+    unit:        Optional[str]  = None
+    start_time:  str
+    end_time:    Optional[str]  = None
+    source_id:   Optional[str]  = None    # deduplication key from HC
+    metadata:    Optional[Dict[str, Any]] = None
+
+
+class SleepSession(BaseModel):
+    provider:              str
+    source:                Optional[str]  = None
+    device:                Optional[str]  = None
+    start_time:            str
+    end_time:              str
+    duration_minutes:      Optional[float] = None
+    awake_minutes:         Optional[float] = None
+    light_sleep_minutes:   Optional[float] = None
+    deep_sleep_minutes:    Optional[float] = None
+    rem_sleep_minutes:     Optional[float] = None
+    source_id:             Optional[str]  = None
+
+
+class Workout(BaseModel):
+    provider:         str
+    source:           Optional[str]  = None
+    device:           Optional[str]  = None
+    exercise_type:    Optional[str]  = None
+    start_time:       str
+    end_time:         str
+    duration_minutes: Optional[float] = None
+    active_calories:  Optional[float] = None
+    distance_km:      Optional[float] = None
+    avg_heart_rate:   Optional[float] = None
+    source_id:        Optional[str]  = None
+
+
+class DailyHealthSummary(BaseModel):
+    date:                    str
+    steps:                   Optional[float] = None
+    distance_km:             Optional[float] = None
+    active_calories:         Optional[float] = None
+    total_calories:          Optional[float] = None
+    active_minutes:          Optional[float] = None
+    resting_heart_rate:      Optional[float] = None
+    average_heart_rate:      Optional[float] = None
+    hrv:                     Optional[float] = None
+    oxygen_saturation:       Optional[float] = None
+    respiratory_rate:        Optional[float] = None
+    sleep_duration_minutes:  Optional[float] = None
+    vo2_max:                 Optional[float] = None
+    skin_temperature:        Optional[float] = None
+
+
+class HealthSyncRequest(BaseModel):
+    session_id:  str
+    provider:    str = "health_connect"
+    metrics:     List[HealthMetric]       = []
+    sleep:       List[SleepSession]       = []
+    workouts:    List[Workout]            = []
+    sync_time:   Optional[str]            = None  # ISO timestamp of this sync
+
+
+class HealthSyncState(BaseModel):
+    session_id:          str
+    provider:            str
+    last_sync_at:        Optional[str] = None
+    last_sync_status:    str           = "never"
+    permissions_granted: Optional[str] = None  # JSON list of granted permissions

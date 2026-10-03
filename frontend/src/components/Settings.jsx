@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { profileApi, clearSession } from '../services/api'
 import { useApp } from '../context/AppContext'
 import { useToast } from '../hooks/useToast'
+import HealthDeviceCard from './HealthDeviceCard'
 
 export default function Settings({ profile, goals, sessionId, onReset }) {
   const { theme, toggleTheme } = useApp()
@@ -105,6 +106,9 @@ export default function Settings({ profile, goals, sessionId, onReset }) {
           )}
         </div>
       )}
+
+      {/* Health & Devices */}
+      <HealthDeviceCard />
 
       {/* Theme */}
       <div className="card">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { logApi, waterApi } from '../services/api'
+import HealthSnapshot from './HealthSnapshot'
 
 // ─── Ring SVG ────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,9 @@ export default function Dashboard({ profile, goals, sessionId, refreshKey }) {
         weekHistory={history}
         currency={currency}
       />
+
+      {/* Health Snapshot */}
+      <HealthSnapshot sessionId={sessionId} onConnect={() => {}} />
 
       {/* Today's food entries */}
       {data?.entries?.length > 0 && (

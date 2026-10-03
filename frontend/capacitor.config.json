@@ -11,7 +11,7 @@
   },
   "android": {
     "allowMixedContent": false,
-    "minSdkVersion": 24,
+    "minSdkVersion": 26,
     "targetSdkVersion": 34,
     "buildOptions": {
       "releaseType": "APK"

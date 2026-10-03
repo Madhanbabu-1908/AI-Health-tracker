@@ -181,6 +181,20 @@ jobs:
               '    <uses-permission android:name="android.permission.INTERNET" />\n'
               '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
               '\n'
+              '    <!-- Health Connect read permissions -->\n'
+              '    <uses-permission android:name="android.permission.health.READ_STEPS" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_DISTANCE" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_RESPIRATORY_RATE" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_SLEEP" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_EXERCISE" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />\n'
+              '    <uses-permission android:name="android.permission.health.READ_VO2_MAX" />\n'
+              '\n'
               '    <application\n'
               '        android:allowBackup="true"\n'
               '        android:icon="@mipmap/ic_launcher"\n'
@@ -205,6 +219,11 @@ jobs:
               '            </intent-filter>\n'
               '        </activity>\n'
               '\n'
+              '        <!-- Required: declare Health Connect usage -->\n'
+              '        <activity\n'
+              '            android:name="androidx.health.connect.client.impl.platform.PermissionsActivity"\n'
+              '            android:exported="true" />\n'
+              '\n'
               '        <provider\n'
               '            android:name="androidx.core.content.FileProvider"\n'
               '            android:authorities="${applicationId}.fileprovider"\n'
@@ -223,7 +242,7 @@ jobs:
           print("AndroidManifest.xml written")
           PYEOF
 
-      - name: Write file_paths.xml and MainActivity.java
+      - name: Write file_paths.xml and MainActivity
         run: |
           python3 << 'PYEOF'
           import os
@@ -239,18 +258,52 @@ jobs:
 
           java_dir = "frontend/android/app/src/main/java/com/nalamudan/healthtracker"
           os.makedirs(java_dir, exist_ok=True)
-          with open(f"{java_dir}/MainActivity.java", "w") as f:
-              f.write('package com.nalamudan.healthtracker;\n\n')
-              f.write('import com.getcapacitor.BridgeActivity;\n')
-              f.write('import android.os.Bundle;\n\n')
-              f.write('public class MainActivity extends BridgeActivity {\n')
-              f.write('    @Override\n')
-              f.write('    protected void onCreate(Bundle savedInstanceState) {\n')
-              f.write('        super.onCreate(savedInstanceState);\n')
+
+          # MainActivity.kt — registers HealthConnectPlugin
+          with open(f"{java_dir}/MainActivity.kt", "w") as f:
+              f.write('package com.nalamudan.healthtracker\n\n')
+              f.write('import com.getcapacitor.BridgeActivity\n')
+              f.write('import android.os.Bundle\n\n')
+              f.write('class MainActivity : BridgeActivity() {\n')
+              f.write('    override fun onCreate(savedInstanceState: Bundle?) {\n')
+              f.write('        registerPlugin(HealthConnectPlugin::class.java)\n')
+              f.write('        super.onCreate(savedInstanceState)\n')
               f.write('    }\n')
               f.write('}\n')
 
-          print("file_paths.xml and MainActivity.java written")
+          print("file_paths.xml and MainActivity.kt written")
+          PYEOF
+
+      - name: Copy HealthConnectPlugin source
+        run: |
+          DEST="frontend/android/app/src/main/java/com/nalamudan/healthtracker"
+          mkdir -p "$DEST"
+          cp frontend/android-plugin/HealthConnectPlugin.kt "$DEST/HealthConnectPlugin.kt"
+          echo "HealthConnectPlugin.kt copied"
+
+      - name: Add Health Connect dependency to app build.gradle
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          gradle_path = "frontend/android/app/build.gradle"
+          with open(gradle_path, "r") as f:
+              content = f.read()
+
+          # Bump minSdkVersion to 26 (required for Health Connect)
+          content = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 26', content)
+
+          # Add Health Connect SDK if not already present
+          hc_dep = '    implementation "androidx.health.connect:connect-client:1.1.0-alpha10"'
+          if 'health.connect' not in content:
+              content = content.replace(
+                  'dependencies {',
+                  'dependencies {\n' + hc_dep
+              )
+
+          with open(gradle_path, "w") as f:
+              f.write(content)
+          print("build.gradle updated with Health Connect dependency")
           PYEOF
 
       - name: Configure Gradle
