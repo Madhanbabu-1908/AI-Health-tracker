@@ -231,7 +231,7 @@ export default function HealthDeviceCard() {
             style={{ flex: 1, fontSize: 13 }}>
             {syncing ? '⟳ Syncing...' : '🔄 Sync Now'}
           </button>
-          <button className="btn btn-secondary" onClick={() => HealthConnectProvider.requestPermissions()}
+          <button className="btn btn-secondary" onClick={() => HealthConnectProvider.openSettings()}
             style={{ flex: 1, fontSize: 13 }}>
             ⚙️ Manage Access
           </button>

@@ -71,25 +71,43 @@ jobs:
       - name: Install Nalamudan app icons
         run: |
           RES="frontend/android/app/src/main/res"
+          # Note: folder is 'Icons' (capital I) on this repo — Linux is case-sensitive
+          ICON_SRC="frontend/public/Icons"
           for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p "$RES/$folder"
-            src="frontend/public/icons/$folder/ic_launcher.png"
-            if [ -f "$src" ]; then
-              cp "$src" "$RES/$folder/ic_launcher.png"
-              cp "$src" "$RES/$folder/ic_launcher_round.png"
-            elif [ -f "frontend/public/android-chrome-192x192.png" ]; then
-              cp frontend/public/android-chrome-192x192.png "$RES/$folder/ic_launcher.png"
-              cp frontend/public/android-chrome-192x192.png "$RES/$folder/ic_launcher_round.png"
+            launcher="$ICON_SRC/$folder/ic_launcher.png"
+            round="$ICON_SRC/$folder/ic_launcher_round.png"
+            if [ -f "$launcher" ]; then
+              cp "$launcher" "$RES/$folder/ic_launcher.png"
+              echo "Copied $launcher"
+            else
+              cp frontend/public/android-chrome-512x512.png "$RES/$folder/ic_launcher.png"
+              echo "Fallback icon for $folder"
+            fi
+            if [ -f "$round" ]; then
+              cp "$round" "$RES/$folder/ic_launcher_round.png"
+            else
+              cp "$RES/$folder/ic_launcher.png" "$RES/$folder/ic_launcher_round.png"
             fi
           done
+          # Also install 512px icon as xxxhdpi if available
+          if [ -f "$ICON_SRC/ic_launcher_512.png" ]; then
+            cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher.png"
+            cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher_round.png"
+          fi
           echo "Icons installed"
 
       - name: Install splash screen
         run: |
           RES="frontend/android/app/src/main/res"
           mkdir -p "$RES/drawable"
-          if [ -f "frontend/public/icons/splash.png" ]; then
-            cp frontend/public/icons/splash.png "$RES/drawable/splash.png"
+          # Splash assets are in Icons/ (capital I)
+          if [ -f "frontend/public/Icons/splash.png" ]; then
+            cp frontend/public/Icons/splash.png "$RES/drawable/splash.png"
+            echo "Splash installed from Icons/splash.png"
+          elif [ -f "frontend/public/Icons/splash_1080.png" ]; then
+            cp frontend/public/Icons/splash_1080.png "$RES/drawable/splash.png"
+            echo "Splash installed from Icons/splash_1080.png"
           fi
           echo "Splash screen installed"
 
@@ -272,63 +290,49 @@ jobs:
           cp frontend/android-plugin/HealthConnectPlugin.kt "$DEST/HealthConnectPlugin.kt"
           echo "HealthConnectPlugin.kt copied"
 
-      - name: Add Health Connect dependency to app build.gradle
+      - name: Patch minSdk and add Health Connect dependency
         run: |
           python3 << 'PYEOF'
           import re, os
 
-          gradle_path = "frontend/android/app/build.gradle"
-          with open(gradle_path, "r") as f:
-              content = f.read()
-
-          print("=== ORIGINAL build.gradle ===")
-          print(content)
-          print("===========================")
-
-          # Patch every numeric minSdk variant
-          content = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 26', content)
-          content = re.sub(r'minSdk\s*=\s*\d+', 'minSdk = 26', content)
-          content = re.sub(r'(minSdk\s+)\d+', r'\g<1>26', content)
-
-          content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 34', content)
-          content = re.sub(r'compileSdk\s*=\s*\d+', 'compileSdk = 34', content)
-          content = re.sub(r'(compileSdk\s+)\d+', r'\g<1>34', content)
-
-          # Add Health Connect dependency if missing
-          hc_dep = '    implementation "androidx.health.connect:connect-client:1.0.0-alpha11"'
-          if 'androidx.health.connect' not in content:
-              content = content.replace(
-                  'dependencies {',
-                  'dependencies {\n' + hc_dep
-              )
-
-          with open(gradle_path, "w") as f:
-              f.write(content)
-          print("=== PATCHED build.gradle ===")
-          print(content)
-          print("build.gradle updated")
-          PYEOF
-
-      - name: Patch variables.gradle minSdkVersion
-        run: |
-          python3 << 'PYEOF'
-          import re, os
-
-          # Capacitor stores minSdkVersion in variables.gradle
+          # ── 1. variables.gradle (Capacitor 6 stores minSdkVersion here) ──
           var_path = "frontend/android/variables.gradle"
           if os.path.exists(var_path):
-              with open(var_path, "r") as f:
-                  content = f.read()
-              print("=== ORIGINAL variables.gradle ===")
-              print(content)
-              content = re.sub(r'minSdkVersion\s*=\s*\d+', 'minSdkVersion = 26', content)
-              content = re.sub(r'compileSdkVersion\s*=\s*\d+', 'compileSdkVersion = 34', content)
+              with open(var_path) as f:
+                  v = f.read()
+              print("variables.gradle BEFORE:", v)
+              v = re.sub(r'(minSdkVersion\s*=\s*)\d+', r'\g<1>26', v)
+              v = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>34', v)
+              v = re.sub(r'(targetSdkVersion\s*=\s*)\d+', r'\g<1>34', v)
               with open(var_path, "w") as f:
-                  f.write(content)
-              print("=== PATCHED variables.gradle ===")
-              print(content)
+                  f.write(v)
+              print("variables.gradle AFTER:", v)
           else:
-              print("variables.gradle not found")
+              print("WARNING: variables.gradle not found at", var_path)
+
+          # ── 2. app/build.gradle (patch any inline minSdk + add HC dep) ──
+          gradle_path = "frontend/android/app/build.gradle"
+          with open(gradle_path) as f:
+              g = f.read()
+          print("build.gradle BEFORE:", g)
+
+          # Cover all known Capacitor/AGP minSdk patterns
+          g = re.sub(r'(minSdkVersion\s+)\d+',   r'\g<1>26', g)
+          g = re.sub(r'(minSdkVersion\s*=\s*)\d+', r'\g<1>26', g)
+          g = re.sub(r'(minSdk\s+)\d+',           r'\g<1>26', g)
+          g = re.sub(r'(minSdk\s*=\s*)\d+',       r'\g<1>26', g)
+          g = re.sub(r'(compileSdkVersion\s+)\d+',   r'\g<1>34', g)
+          g = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>34', g)
+          g = re.sub(r'(compileSdk\s+)\d+',           r'\g<1>34', g)
+          g = re.sub(r'(compileSdk\s*=\s*)\d+',       r'\g<1>34', g)
+
+          hc_dep = '    implementation "androidx.health.connect:connect-client:1.0.0-alpha11"'
+          if 'androidx.health.connect' not in g:
+              g = g.replace('dependencies {', 'dependencies {\n' + hc_dep)
+
+          with open(gradle_path, "w") as f:
+              f.write(g)
+          print("build.gradle AFTER:", g)
           PYEOF
 
       - name: Configure Gradle

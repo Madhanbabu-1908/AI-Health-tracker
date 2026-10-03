@@ -94,6 +94,16 @@ export const HealthConnectProvider = {
     }
   },
 
+  async openSettings() {
+    const plugin = getPlugin()
+    if (!plugin) return
+    try {
+      await plugin.openHealthConnectSettings()
+    } catch (e) {
+      console.warn('[HC] openSettings error:', e.message)
+    }
+  },
+
   async readMetrics(startTime, endTime) {
     const plugin = getPlugin()
     if (!plugin) return []
