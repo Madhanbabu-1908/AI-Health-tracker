@@ -35,13 +35,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Use the official action — v4 does NOT try to install the obsolete 'tools' package
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
       - name: Install Android platform tools
         run: |
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" 2>&1 | grep -v '\[=' || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -70,40 +70,60 @@ jobs:
           npx cap sync android
           echo "Capacitor sync complete"
 
-      - name: Install Nalamudan app icons
+      - name: Install Nalamudan launcher icons
         run: |
           RES="frontend/android/app/src/main/res"
-          # Note: folder is 'Icons' (capital I) on this repo — Linux is case-sensitive
           ICON_SRC="frontend/public/Icons"
+
+          # Density folders — note: xxxhdpi (not xxxdpi)
+          declare -A SIZES
+          SIZES["mipmap-mdpi"]="mdpi"
+          SIZES["mipmap-hdpi"]="hdpi"
+          SIZES["mipmap-xhdpi"]="xhdpi"
+          SIZES["mipmap-xxhdpi"]="xxhdpi"
+          SIZES["mipmap-xxxhdpi"]="xxxhdpi"
+
           for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p "$RES/$folder"
-            launcher="$ICON_SRC/$folder/ic_launcher.png"
-            round="$ICON_SRC/$folder/ic_launcher_round.png"
-            if [ -f "$launcher" ]; then
-              cp "$launcher" "$RES/$folder/ic_launcher.png"
-              echo "Copied $launcher"
+
+            # ic_launcher (square/legacy icon)
+            src_launcher="$ICON_SRC/$folder/ic_launcher.png"
+            if [ -f "$src_launcher" ]; then
+              cp "$src_launcher" "$RES/$folder/ic_launcher.png"
+              echo "Copied $src_launcher"
             else
               cp frontend/public/android-chrome-512x512.png "$RES/$folder/ic_launcher.png"
-              echo "Fallback icon for $folder"
+              echo "Fallback ic_launcher for $folder"
             fi
-            if [ -f "$round" ]; then
-              cp "$round" "$RES/$folder/ic_launcher_round.png"
+
+            # ic_launcher_round
+            src_round="$ICON_SRC/$folder/ic_launcher_round.png"
+            if [ -f "$src_round" ]; then
+              cp "$src_round" "$RES/$folder/ic_launcher_round.png"
             else
               cp "$RES/$folder/ic_launcher.png" "$RES/$folder/ic_launcher_round.png"
             fi
+
+            # ic_launcher_foreground — used by the adaptive icon XML in mipmap-anydpi-v26.
+            # Use the same source PNG as the launcher icon, scaled to 108dp safe-zone.
+            # (The adaptive icon system will mask it; using the same PNG is correct.)
+            cp "$RES/$folder/ic_launcher.png" "$RES/$folder/ic_launcher_foreground.png"
           done
-          # Also install 512px icon as xxxhdpi if available
+
+          # Use the 512px master for xxxhdpi if available (highest quality)
           if [ -f "$ICON_SRC/ic_launcher_512.png" ]; then
             cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher.png"
             cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher_round.png"
+            cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
+            echo "512px master installed for xxxhdpi"
           fi
+
           echo "Icons installed"
 
       - name: Install splash screen
         run: |
           RES="frontend/android/app/src/main/res"
           mkdir -p "$RES/drawable"
-          # Splash assets are in Icons/ (capital I)
           if [ -f "frontend/public/Icons/splash.png" ]; then
             cp frontend/public/Icons/splash.png "$RES/drawable/splash.png"
             echo "Splash installed from Icons/splash.png"
@@ -111,7 +131,6 @@ jobs:
             cp frontend/public/Icons/splash_1080.png "$RES/drawable/splash.png"
             echo "Splash installed from Icons/splash_1080.png"
           fi
-          echo "Splash screen installed"
 
       - name: Write Android resource files
         run: |
@@ -133,6 +152,9 @@ jobs:
               '</resources>\n'
           )
 
+          # ic_launcher_background is defined here as a color.
+          # Capacitor may also generate ic_launcher_background.xml — we delete it below
+          # to avoid duplicate resource errors.
           files[f"{RES}/values/colors.xml"] = (
               '<?xml version="1.0" encoding="utf-8"?>\n'
               '<resources>\n'
@@ -144,11 +166,11 @@ jobs:
               '</resources>\n'
           )
 
-          # Capacitor generates ic_launcher_background.xml — overwrite it to
-          # avoid duplicate resource conflict with colors.xml
+          # Remove Capacitor-generated ic_launcher_background.xml to avoid duplicate
           cap_bg = f"{RES}/values/ic_launcher_background.xml"
           if os.path.exists(cap_bg):
               os.remove(cap_bg)
+              print(f"Removed duplicate: {cap_bg}")
 
           files[f"{RES}/values/styles.xml"] = (
               '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -189,14 +211,25 @@ jobs:
       - name: Write AndroidManifest.xml
         run: |
           python3 << 'PYEOF'
+          # IMPORTANT:
+          # 1. <queries> block MUST be present so HealthConnectClient.getSdkStatus()
+          #    can detect com.google.android.apps.healthdata on Android 11+.
+          # 2. Do NOT register androidx.health.connect.client.impl.* internal classes.
+          # 3. <queries> is a sibling of <application>, NOT inside it.
           content = (
               '<?xml version="1.0" encoding="utf-8"?>\n'
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
               '\n'
+              '    <!-- Required so HealthConnectClient.getSdkStatus() can detect the\n'
+              '         Health Connect provider on Android 11+ (package visibility). -->\n'
+              '    <queries>\n'
+              '        <package android:name="com.google.android.apps.healthdata" />\n'
+              '    </queries>\n'
+              '\n'
               '    <uses-permission android:name="android.permission.INTERNET" />\n'
               '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
               '\n'
-              '    <!-- Health Connect read permissions -->\n'
+              '    <!-- Health Connect READ permissions -->\n'
               '    <uses-permission android:name="android.permission.health.READ_STEPS" />\n'
               '    <uses-permission android:name="android.permission.health.READ_DISTANCE" />\n'
               '    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />\n'
@@ -234,9 +267,11 @@ jobs:
               '            </intent-filter>\n'
               '        </activity>\n'
               '\n'
-              '        <activity\n'
-              '            android:name="androidx.health.connect.client.impl.platform.PermissionsActivity"\n'
-              '            android:exported="true" />\n'
+              '        <!-- NOTE: Do NOT register\n'
+              '             androidx.health.connect.client.impl.platform.PermissionsActivity\n'
+              '             here. The HC SDK registers its own permission activity internally.\n'
+              '             Manually registering internal implementation classes breaks the\n'
+              '             permission flow. -->\n'
               '\n'
               '        <provider\n'
               '            android:name="androidx.core.content.FileProvider"\n'
@@ -305,33 +340,44 @@ jobs:
                   v = f.read()
               print("variables.gradle BEFORE:", v)
               v = re.sub(r'(minSdkVersion\s*=\s*)\d+', r'\g<1>26', v)
+              v = re.sub(r'(minSdkVersion\s+)\d+',     r'\g<1>26', v)
               v = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>34', v)
+              v = re.sub(r'(compileSdkVersion\s+)\d+',     r'\g<1>34', v)
               v = re.sub(r'(targetSdkVersion\s*=\s*)\d+', r'\g<1>34', v)
+              v = re.sub(r'(targetSdkVersion\s+)\d+',     r'\g<1>34', v)
               with open(var_path, "w") as f:
                   f.write(v)
               print("variables.gradle AFTER:", v)
           else:
               print("WARNING: variables.gradle not found at", var_path)
 
-          # ── 2. app/build.gradle (patch any inline minSdk + add HC dep) ──
+          # ── 2. app/build.gradle (patch inline minSdk + add HC dependency) ──
           gradle_path = "frontend/android/app/build.gradle"
           with open(gradle_path) as f:
               g = f.read()
           print("build.gradle BEFORE:", g)
 
-          # Cover all known Capacitor/AGP minSdk patterns
-          g = re.sub(r'(minSdkVersion\s+)\d+',   r'\g<1>26', g)
+          g = re.sub(r'(minSdkVersion\s+)\d+',    r'\g<1>26', g)
           g = re.sub(r'(minSdkVersion\s*=\s*)\d+', r'\g<1>26', g)
-          g = re.sub(r'(minSdk\s+)\d+',           r'\g<1>26', g)
-          g = re.sub(r'(minSdk\s*=\s*)\d+',       r'\g<1>26', g)
-          g = re.sub(r'(compileSdkVersion\s+)\d+',   r'\g<1>34', g)
+          g = re.sub(r'(minSdk\s+)\d+',            r'\g<1>26', g)
+          g = re.sub(r'(minSdk\s*=\s*)\d+',        r'\g<1>26', g)
+          g = re.sub(r'(compileSdkVersion\s+)\d+',    r'\g<1>34', g)
           g = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>34', g)
-          g = re.sub(r'(compileSdk\s+)\d+',           r'\g<1>34', g)
-          g = re.sub(r'(compileSdk\s*=\s*)\d+',       r'\g<1>34', g)
+          g = re.sub(r'(compileSdk\s+)\d+',            r'\g<1>34', g)
+          g = re.sub(r'(compileSdk\s*=\s*)\d+',        r'\g<1>34', g)
 
-          hc_dep = '    implementation "androidx.health.connect:connect-client:1.0.0-alpha11"'
+          # Health Connect 1.1.0-rc01 is the latest release candidate compatible
+          # with compileSdk 34 + AGP 8.x. Do NOT use 1.1.0-alpha10 (requires compileSdk 35).
+          hc_dep = '    implementation "androidx.health.connect:connect-client:1.1.0-rc01"'
           if 'androidx.health.connect' not in g:
               g = g.replace('dependencies {', 'dependencies {\n' + hc_dep)
+          else:
+              # Update any existing HC dep to the correct version
+              g = re.sub(
+                  r'implementation\s+"androidx\.health\.connect:connect-client:[^"]*"',
+                  'implementation "androidx.health.connect:connect-client:1.1.0-rc01"',
+                  g
+              )
 
           with open(gradle_path, "w") as f:
               f.write(g)
@@ -364,7 +410,7 @@ jobs:
         run: |
           DATE=$(date +'%Y%m%d-%H%M')
           SRC="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
-          DEST="frontend/android/app/build/outputs/apk/debug/Nalamudan-v4-${DATE}.apk"
+          DEST="frontend/android/app/build/outputs/apk/debug/Nalamudan-v5-${DATE}.apk"
           cp "$SRC" "$DEST"
           echo "APK ready: $(du -sh $SRC | cut -f1)"
 
@@ -381,7 +427,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v4-${{ github.run_number }}
+          tag_name: v5-${{ github.run_number }}
           name: "Nalamudan - Build ${{ github.run_number }}"
           body: "Nalamudan Health Tracker. Backend: https://ai-health-tracker-yycb.onrender.com"
           files: frontend/android/app/build/outputs/apk/debug/Nalamudan-*.apk

@@ -45,23 +45,34 @@ class HealthConnectPlugin : Plugin() {
     )
 
     override fun load() {
-        // Register the permission launcher using the official HC contract
-        val client = getClientOrNull() ?: return
-        permissionLauncher = activity.registerForActivityResult(
-            client.permissionController.createRequestPermissionResultContract()
-        ) { granted ->
-            val call = pendingPermissionCall ?: return@registerForActivityResult
-            pendingPermissionCall = null
-            val arr = JSArray()
-            granted.forEach { arr.put(it) }
-            val res = JSObject()
-            res.put("granted", arr)
-            call.resolve(res)
+        // Register the permission launcher unconditionally at plugin load time.
+        // Must be registered before the activity is started (Capacitor calls load() early).
+        // We guard with a try/catch: if HC is completely unavailable the launcher
+        // registration will fail gracefully and requestPermissions() will reject.
+        try {
+            val contract = HealthConnectClient.getOrCreate(context)
+                .permissionController
+                .createRequestPermissionResultContract()
+            permissionLauncher = activity.registerForActivityResult(contract) { granted ->
+                val call = pendingPermissionCall ?: return@registerForActivityResult
+                pendingPermissionCall = null
+                val arr = JSArray()
+                granted.forEach { arr.put(it) }
+                val res = JSObject()
+                res.put("granted", arr)
+                call.resolve(res)
+            }
+        } catch (e: Exception) {
+            // HC not available on this device — permissionLauncher stays null.
+            // checkAvailability() will return NOT_SUPPORTED and the UI will handle it.
+            android.util.Log.w("HealthConnectPlugin", "HC not available at load(): ${e.message}")
         }
     }
 
     private fun getClientOrNull(): HealthConnectClient? {
-        val status = HealthConnectClient.getSdkStatus(context)
+        val status = HealthConnectClient.getSdkStatus(
+            context, HealthConnectClient.DEFAULT_PROVIDER_PACKAGE_NAME
+        )
         return if (status == HealthConnectClient.SDK_AVAILABLE)
             HealthConnectClient.getOrCreate(context)
         else null
@@ -71,12 +82,14 @@ class HealthConnectPlugin : Plugin() {
 
     @PluginMethod
     fun checkAvailability(call: PluginCall) {
-        val status = HealthConnectClient.getSdkStatus(context)
+        val providerPackage = HealthConnectClient.DEFAULT_PROVIDER_PACKAGE_NAME
+        val status = HealthConnectClient.getSdkStatus(context, providerPackage)
         val res = JSObject()
+        res.put("sdkStatus", status)
         res.put("status", when (status) {
-            HealthConnectClient.SDK_AVAILABLE                              -> "AVAILABLE"
-            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED  -> "NOT_INSTALLED"
-            else                                                           -> "NOT_SUPPORTED"
+            HealthConnectClient.SDK_AVAILABLE                             -> "AVAILABLE"
+            HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> "UPDATE_REQUIRED"
+            else                                                          -> "NOT_SUPPORTED"
         })
         call.resolve(res)
     }

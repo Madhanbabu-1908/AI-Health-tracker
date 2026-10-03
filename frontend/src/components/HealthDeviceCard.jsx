@@ -143,30 +143,37 @@ export default function HealthDeviceCard() {
     )
   }
 
-  // ── Not installed ─────────────────────────────────────────────────────────
-  if (availability === HC_STATUS.NOT_INSTALLED) {
+  // ── Not installed / needs update ───────────────────────────────────────────
+  if (availability === HC_STATUS.UPDATE_REQUIRED) {
     return (
       <div className="card">
         <div className="card-title">Health &amp; Devices</div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
-          Health Connect is required to sync your health data.
+          Health Connect needs to be updated to work with Nalamudan.
         </div>
         <a href="market://details?id=com.google.android.apps.healthdata"
           style={{ display: 'block', textDecoration: 'none' }}>
-          <button className="btn btn-primary">Install Health Connect</button>
+          <button className="btn btn-primary">Update Health Connect</button>
         </a>
+        <button className="btn btn-secondary" onClick={loadState} style={{ marginTop: 8, fontSize: 13 }}>
+          Check Again
+        </button>
       </div>
     )
   }
 
   // ── Not supported ─────────────────────────────────────────────────────────
-  if (availability === HC_STATUS.NOT_SUPPORTED) {
+  if (availability === HC_STATUS.NOT_SUPPORTED || availability === HC_STATUS.UNKNOWN) {
     return (
       <div className="card">
         <div className="card-title">Health &amp; Devices</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
           Health Connect isn't available on this device.
+          Please install or update Health Connect and try again.
         </div>
+        <button className="btn btn-secondary" onClick={loadState} style={{ fontSize: 13 }}>
+          Check Again
+        </button>
         {isDev && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 11, color: 'var(--warn)', marginBottom: 8, fontWeight: 600 }}>

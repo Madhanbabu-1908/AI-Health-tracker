@@ -30,10 +30,10 @@ function getPlugin() {
 // ─── Availability states ──────────────────────────────────────────────────────
 
 export const HC_STATUS = {
-  AVAILABLE:      'AVAILABLE',
-  NOT_INSTALLED:  'NOT_INSTALLED',
-  NOT_SUPPORTED:  'NOT_SUPPORTED',
-  UNKNOWN:        'UNKNOWN',
+  AVAILABLE:       'AVAILABLE',
+  UPDATE_REQUIRED: 'UPDATE_REQUIRED',  // HC installed but needs update
+  NOT_SUPPORTED:   'NOT_SUPPORTED',    // device doesn't support HC at all
+  UNKNOWN:         'UNKNOWN',
 }
 
 // ─── HealthDataProvider interface (documents the contract) ───────────────────
