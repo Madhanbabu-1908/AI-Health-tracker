@@ -41,7 +41,7 @@ jobs:
 
       - name: Install Android platform tools
         run: |
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -345,6 +345,36 @@ jobs:
           import re, os
 
           # ── 1. variables.gradle (Capacitor 6 stores minSdkVersion here) ──
+          # Health Connect 1.1.0-rc01 requires compileSdk 36 and AGP 8.9.1+.
+          # AGP 8.10.0 supports API 36 and requires Gradle 8.11.1 (JDK 17 is configured).
+          root_gradle_path = "frontend/android/build.gradle"
+          with open(root_gradle_path) as f:
+              root_gradle = f.read()
+          root_gradle, agp_count = re.subn(
+              r"classpath\s+['\"]com\.android\.tools\.build:gradle:[^'\"]+['\"]",
+              "classpath 'com.android.tools.build:gradle:8.10.0'",
+              root_gradle,
+              count=1
+          )
+          if agp_count != 1:
+              raise RuntimeError("Could not find the generated Android Gradle Plugin declaration")
+          with open(root_gradle_path, "w") as f:
+              f.write(root_gradle)
+
+          wrapper_path = "frontend/android/gradle/wrapper/gradle-wrapper.properties"
+          with open(wrapper_path) as f:
+              wrapper = f.read()
+          wrapper, gradle_count = re.subn(
+              r"gradle-[0-9.]+-(?:all|bin)\.zip",
+              "gradle-8.11.1-all.zip",
+              wrapper,
+              count=1
+          )
+          if gradle_count != 1:
+              raise RuntimeError("Could not find the generated Gradle wrapper distribution")
+          with open(wrapper_path, "w") as f:
+              f.write(wrapper)
+
           var_path = "frontend/android/variables.gradle"
           if os.path.exists(var_path):
               with open(var_path) as f:
@@ -352,8 +382,8 @@ jobs:
               print("variables.gradle BEFORE:", v)
               v = re.sub(r'(minSdkVersion\s*=\s*)\d+', r'\g<1>26', v)
               v = re.sub(r'(minSdkVersion\s+)\d+',     r'\g<1>26', v)
-              v = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>34', v)
-              v = re.sub(r'(compileSdkVersion\s+)\d+',     r'\g<1>34', v)
+              v = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>36', v)
+              v = re.sub(r'(compileSdkVersion\s+)\d+',     r'\g<1>36', v)
               v = re.sub(r'(targetSdkVersion\s*=\s*)\d+', r'\g<1>34', v)
               v = re.sub(r'(targetSdkVersion\s+)\d+',     r'\g<1>34', v)
               with open(var_path, "w") as f:
@@ -372,13 +402,13 @@ jobs:
           g = re.sub(r'(minSdkVersion\s*=\s*)\d+', r'\g<1>26', g)
           g = re.sub(r'(minSdk\s+)\d+',            r'\g<1>26', g)
           g = re.sub(r'(minSdk\s*=\s*)\d+',        r'\g<1>26', g)
-          g = re.sub(r'(compileSdkVersion\s+)\d+',    r'\g<1>34', g)
-          g = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>34', g)
-          g = re.sub(r'(compileSdk\s+)\d+',            r'\g<1>34', g)
-          g = re.sub(r'(compileSdk\s*=\s*)\d+',        r'\g<1>34', g)
+          g = re.sub(r'(compileSdkVersion\s+)\d+',    r'\g<1>36', g)
+          g = re.sub(r'(compileSdkVersion\s*=\s*)\d+', r'\g<1>36', g)
+          g = re.sub(r'(compileSdk\s+)\d+',            r'\g<1>36', g)
+          g = re.sub(r'(compileSdk\s*=\s*)\d+',        r'\g<1>36', g)
 
-          # Health Connect 1.1.0-rc01 is the latest release candidate compatible
-          # with compileSdk 34 + AGP 8.x. Do NOT use 1.1.0-alpha10 (requires compileSdk 35).
+          # Keep the official Health Connect client version; its metadata requirements
+          # are satisfied by compileSdk 36 and AGP 8.10.0 below.
           hc_dep = '    implementation "androidx.health.connect:connect-client:1.1.0-rc01"'
           if 'androidx.health.connect' not in g:
               g = g.replace('dependencies {', 'dependencies {\n' + hc_dep)
@@ -410,6 +440,7 @@ jobs:
         working-directory: frontend/android
         run: |
           chmod +x gradlew
+          ./gradlew :app:checkDebugAarMetadata --no-daemon --stacktrace
           ./gradlew assembleDebug \
             --no-daemon \
             --stacktrace \
@@ -421,7 +452,7 @@ jobs:
         run: |
           set -euo pipefail
           APK="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
-          AAPT="$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/35.0.0/aapt"
           test -s "$APK"
           "$AAPT" dump badging "$APK" | grep -F "package: name='com.nalamudan.healthtracker'"
           "$AAPT" dump badging "$APK" | grep -E "^application-icon(-[0-9]+)?:"
