@@ -76,21 +76,18 @@ jobs:
           ICON_SRC="frontend/public/Icons"
 
           # Density folders — note: xxxhdpi (not xxxdpi)
-          declare -A SIZES
-          SIZES["mipmap-mdpi"]="mdpi"
-          SIZES["mipmap-hdpi"]="hdpi"
-          SIZES["mipmap-xhdpi"]="xhdpi"
-          SIZES["mipmap-xxhdpi"]="xxhdpi"
-          SIZES["mipmap-xxxhdpi"]="xxxhdpi"
-
+          # Capacitor recreates android/ on every CI run, so install checked-in
+          # icons into the generated project after cap add and cap sync.
           for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p "$RES/$folder"
 
             # ic_launcher (square/legacy icon)
             src_launcher="$ICON_SRC/$folder/ic_launcher.png"
-            if [ -f "$src_launcher" ]; then
+            if [ "$folder" = "mipmap-xxxhdpi" ] && [ -s "$ICON_SRC/ic_launcher_512.png" ]; then
+              src_launcher="$ICON_SRC/ic_launcher_512.png"
+            fi
+            if [ -s "$src_launcher" ]; then
               cp "$src_launcher" "$RES/$folder/ic_launcher.png"
-              echo "Copied $src_launcher"
             else
               cp frontend/public/android-chrome-512x512.png "$RES/$folder/ic_launcher.png"
               echo "Fallback ic_launcher for $folder"
@@ -98,7 +95,7 @@ jobs:
 
             # ic_launcher_round
             src_round="$ICON_SRC/$folder/ic_launcher_round.png"
-            if [ -f "$src_round" ]; then
+            if [ -s "$src_round" ]; then
               cp "$src_round" "$RES/$folder/ic_launcher_round.png"
             else
               cp "$RES/$folder/ic_launcher.png" "$RES/$folder/ic_launcher_round.png"
@@ -110,13 +107,27 @@ jobs:
             cp "$RES/$folder/ic_launcher.png" "$RES/$folder/ic_launcher_foreground.png"
           done
 
-          # Use the 512px master for xxxhdpi if available (highest quality)
-          if [ -f "$ICON_SRC/ic_launcher_512.png" ]; then
-            cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher.png"
-            cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher_round.png"
-            cp "$ICON_SRC/ic_launcher_512.png" "$RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
-            echo "512px master installed for xxxhdpi"
-          fi
+          # Explicitly create adaptive icons so Android 8+ uses these app assets,
+          # independent of which default icon files cap add generated.
+          mkdir -p "$RES/mipmap-anydpi-v26"
+          for name in ic_launcher ic_launcher_round; do
+            cat > "$RES/mipmap-anydpi-v26/$name.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background" />
+              <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+          </adaptive-icon>
+          XML
+          done
+
+          # Fail the workflow instead of publishing an APK with missing launcher assets.
+          for folder in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            test -s "$RES/$folder/ic_launcher.png"
+            test -s "$RES/$folder/ic_launcher_round.png"
+            test -s "$RES/$folder/ic_launcher_foreground.png"
+          done
+          test -s "$RES/mipmap-anydpi-v26/ic_launcher.xml"
+          test -s "$RES/mipmap-anydpi-v26/ic_launcher_round.xml"
 
           echo "Icons installed"
 
@@ -405,6 +416,15 @@ jobs:
             --warning-mode all \
             -Pandroid.injected.testOnly=false
           echo "APK built successfully"
+
+      - name: Verify APK application icon
+        run: |
+          set -euo pipefail
+          APK="frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='com.nalamudan.healthtracker'"
+          "$AAPT" dump badging "$APK" | grep -E "^application-icon(-[0-9]+)?:"
 
       - name: Rename APK
         run: |
