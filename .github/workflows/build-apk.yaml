@@ -279,7 +279,12 @@ jobs:
 
           content = re.sub(r'minSdkVersion\s+\d+', 'minSdkVersion 26', content)
 
-          hc_dep = '    implementation "androidx.health.connect:connect-client:1.1.0-alpha10"'
+          # Bump compileSdkVersion to 34 explicitly (already default but ensure it)
+          content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 34', content)
+          content = re.sub(r'compileSdk\s+\d+', 'compileSdk 34', content)
+
+          # Use 1.0.0-alpha11 — last version compatible with compileSdk 34 + AGP 8.2.1
+          hc_dep = '    implementation "androidx.health.connect:connect-client:1.0.0-alpha11"'
           if 'androidx.health.connect' not in content:
               content = content.replace(
                   'dependencies {',
