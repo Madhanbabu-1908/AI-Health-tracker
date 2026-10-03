@@ -119,10 +119,15 @@ jobs:
               '    <color name="colorPrimary">#1A237E</color>\n'
               '    <color name="colorPrimaryDark">#0D1757</color>\n'
               '    <color name="colorAccent">#00E5A0</color>\n'
-              '    <color name="ic_launcher_background">#1A237E</color>\n'
               '    <color name="splash_background">#1A237E</color>\n'
               '</resources>\n'
           )
+
+          # Capacitor generates ic_launcher_background.xml — overwrite it to
+          # avoid duplicate resource conflict with colors.xml
+          cap_bg = f"{RES}/values/ic_launcher_background.xml"
+          if os.path.exists(cap_bg):
+              os.remove(cap_bg)
 
           files[f"{RES}/values/styles.xml"] = (
               '<?xml version="1.0" encoding="utf-8"?>\n'
